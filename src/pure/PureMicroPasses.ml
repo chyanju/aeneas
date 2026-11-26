@@ -351,7 +351,7 @@ let apply_passes_to_pure_fun_translations (crate : LlbcAst.crate)
   let diagnose_mutex = Mutex.create () in
 
   (* Apply the micro-passes *)
-  let apply (rank : int) (f : fun_decl) : pure_fun_translation =
+  let apply_passes (rank : int) (f : fun_decl) : pure_fun_translation =
     let overall_start =
       if !Config.diagnose_micro_passes then Unix.gettimeofday () else 0.0
     in
@@ -513,6 +513,37 @@ let apply_passes_to_pure_fun_translations (crate : LlbcAst.crate)
     end;
 
     trans
+  in
+  (* If the micro-passes fail on a function, we replace its body with an error
+     and apply them again, so that only this function is lost *)
+  let apply (rank : int) (f : fun_decl) : pure_fun_translation =
+    try apply_passes rank f
+    with Errors.CFailure error ->
+      let name = name_to_string trans_ctx f.item_meta.name in
+      let name_pattern =
+        try
+          name_to_pattern_string (Some f.item_meta.span) trans_ctx
+            f.item_meta.name
+        with Errors.CFailure _ ->
+          "(could not compute the name pattern due to a different error)"
+      in
+      [%warn_opt_span] error.span
+        ("Could not apply the micro-passes to the function '" ^ name
+       ^ " because of previous error\nName pattern: '" ^ name_pattern ^ "'"
+       ^ "\nDefinition span: "
+        ^ Errors.raw_span_to_string f.item_meta.span
+        ^ Contexts.compute_local_uses_error_message trans_ctx
+            (Meta.IdFun f.def_id));
+      let body =
+        Option.map
+          (fun (body : fun_body) ->
+            {
+              body with
+              body = { e = EError (error.span, error.msg); ty = TError };
+            })
+          f.body
+      in
+      apply_passes rank { f with body }
   in
   let transl =
     (* Partition the opaque and transparent functions *)

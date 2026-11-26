@@ -1,0 +1,102 @@
+[[91mError[39m] Dynamic trait types are not supported yet
+Source: 'tests/src/failed-type-decl.rs', lines 10:0-13:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 192
+[[93mWarn[39m ] Could not translate type decl 'failed_type_decl::W because of previous error
+Name pattern: 'failed_type_decl::W'
+Source: 'tests/src/failed-type-decl.rs', lines 10:0-13:1
+Compiler source: symbolic/SymbolicToPure.ml, line 146
+
+[[91mError[39m] Dynamic trait types are not supported yet
+Source: 'tests/src/failed-type-decl.rs', lines 15:0-18:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 192
+[[93mWarn[39m ] Could not translate type decl 'failed_type_decl::S because of previous error
+Name pattern: 'failed_type_decl::S'
+Source: 'tests/src/failed-type-decl.rs', lines 15:0-18:1
+Compiler source: symbolic/SymbolicToPure.ml, line 146
+
+[[91mError[39m] Dynamic trait types are not supported yet
+Source: 'tests/src/failed-type-decl.rs', lines 20:0-20:38
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 192
+[[93mWarn[39m ] Could not translate type decl 'failed_type_decl::T because of previous error
+Name pattern: 'failed_type_decl::T'
+Source: 'tests/src/failed-type-decl.rs', lines 20:0-20:38
+Compiler source: symbolic/SymbolicToPure.ml, line 146
+
+[[91mError[39m] Dynamic trait types are not supported yet
+Source: 'tests/src/failed-type-decl.rs', lines 22:0-25:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 192
+[[93mWarn[39m ] Could not translate type decl 'failed_type_decl::E because of previous error
+Name pattern: 'failed_type_decl::E'
+Source: 'tests/src/failed-type-decl.rs', lines 22:0-25:1
+Compiler source: symbolic/SymbolicToPure.ml, line 146
+
+[[91mError[39m] Unknown type declaration (id 5): the translation of this type probably failed because of a previous error
+Source: 'tests/src/failed-type-decl.rs', lines 28:0-30:1
+Compiler source: pure/PureTypeCheck.ml, line 26
+[[91mError[39m] Unknown type declaration (id 7): the translation of this type probably failed because of a previous error
+Source: 'tests/src/failed-type-decl.rs', lines 43:0-45:1
+Compiler source: pure/PureUtils.ml, line 2719
+[[93mWarn[39m ] Could not apply the micro-passes to the function 'failed_type_decl::tuple_field because of previous error
+Name pattern: 'failed_type_decl::tuple_field'
+Definition span: 'tests/src/failed-type-decl.rs', lines 43:0-45:1
+Source: 'tests/src/failed-type-decl.rs', lines 43:0-45:1
+Compiler source: pure/PureMicroPasses.ml, line 530
+
+[[91mError[39m] Unknown type declaration (id 6): the translation of this type probably failed because of a previous error
+Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
+Compiler source: pure/PureTypeCheck.ml, line 26
+[[93mWarn[39m ] Could not add type annotations to the fun declaration 'failed_type_decl::struct_update because of previous error
+Name pattern: 'failed_type_decl::struct_update'.
+ We will generate code without annotations but it may not type-check.
+Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
+Compiler source: pure/PureMicroPassesAnnots.ml, line 442
+
+[[91mError[39m] Unknown type declaration (id 8): the translation of this type probably failed because of a previous error
+Source: 'tests/src/failed-type-decl.rs', lines 38:0-40:1
+Compiler source: pure/PureTypeCheck.ml, line 26
+[[93mWarn[39m ] Could not add type annotations to the fun declaration 'failed_type_decl::constructor because of previous error
+Name pattern: 'failed_type_decl::constructor'.
+ We will generate code without annotations but it may not type-check.
+Source: 'tests/src/failed-type-decl.rs', lines 38:0-40:1
+Compiler source: pure/PureMicroPassesAnnots.ml, line 442
+
+[[91mError[39m] Could not find: type name: failed_type_decl::W
+Source: 'tests/src/failed-type-decl.rs', lines 28:0-30:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::W
+Source: 'tests/src/failed-type-decl.rs', lines 28:0-30:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::W
+Source: 'tests/src/failed-type-decl.rs', lines 28:0-30:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::W
+Source: 'tests/src/failed-type-decl.rs', lines 28:0-30:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::S
+Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::S
+Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Unknown type declaration (id 6): the translation of this type probably failed because of a previous error
+Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
+Compiler source: extract/Extract.ml, line 1147
+[[91mError[39m] Could not find: type name: failed_type_decl::S, field name: n
+Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
+Compiler source: extract/ExtractBase.ml, line 468
+[[91mError[39m] Could not find: type name: failed_type_decl::E
+Source: 'tests/src/failed-type-decl.rs', lines 38:0-40:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::E, variant name: failed_type_decl::E::B
+Source: 'tests/src/failed-type-decl.rs', lines 38:0-40:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::T
+Source: 'tests/src/failed-type-decl.rs', lines 43:0-45:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: type name: failed_type_decl::S
+Source: 'tests/src/failed-type-decl.rs', lines 48:0-50:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Unknown type declaration (id 6): the translation of this type probably failed because of a previous error
+Source: 'tests/src/failed-type-decl.rs', lines 48:0-50:1
+Compiler source: extract/Extract.ml, line 1147
+[[92mInfo[39m ] Generated the partial file (because of 21 errors, including 6 unique errors): tests/llbc/lean/FailedTypeDecl.lean

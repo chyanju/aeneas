@@ -357,6 +357,13 @@ let make_subst_from_generics (params : generic_params) (args : generic_args) :
   make_subst_from_generics_for_trait params
     (UnknownTrait "make_subst_from_generics") args
 
+(** The message of the error raised when a type declaration is missing from the
+    map of the translated type declarations. *)
+let unknown_type_decl_message (id : TypeDeclId.id) : string =
+  "Unknown type declaration (id " ^ TypeDeclId.to_string id
+  ^ "): the translation of this type probably failed because of a previous \
+     error"
+
 (** Retrieve the list of fields for the given variant of a
     {!type:Aeneas.Pure.type_decl}.
 
@@ -2708,7 +2715,11 @@ let tpat_decomposes_enum span (type_decls : type_decl TypeDeclId.Map.t)
         let type_id, _ = ty_as_adt span ty in
         match type_id with
         | TAdtId id ->
-            let decl = TypeDeclId.Map.find id type_decls in
+            let decl =
+              [%unwrap_with_span] span
+                (TypeDeclId.Map.find_opt id type_decls)
+                (unknown_type_decl_message id)
+            in
             begin
               match decl.kind with
               | Struct _ | Opaque -> ()

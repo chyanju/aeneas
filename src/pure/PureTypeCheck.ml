@@ -22,7 +22,11 @@ let get_adt_field_types (span : Meta.span)
       generics.types
   | TAdtId def_id ->
       (* "Regular" ADT *)
-      let def = TypeDeclId.Map.find def_id type_decls in
+      let def =
+        [%unwrap_with_span] span
+          (TypeDeclId.Map.find_opt def_id type_decls)
+          (unknown_type_decl_message def_id)
+      in
       type_decl_get_instantiated_fields_types def variant_id generics
   | TBuiltin aty -> (
       (* Builtin type *)

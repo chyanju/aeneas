@@ -1141,8 +1141,11 @@ and extract_field_projector (span : Meta.span) (ctx : extraction_ctx)
     (args : texpr list) (out_ty : ty) : unit =
   (* We isolate the first argument (if there is), in order to pretty print the
    * projection ([x.field] instead of [MkAdt?.field x] *)
-  match args with
-  | [ arg ] ->
+  match (args, proj.adt_id) with
+  | [ _ ], TAdtId id when not (TypeDeclId.Map.mem id ctx.trans_types) ->
+      (* The translation of the type declaration failed *)
+      [%admit_raise] span (PureUtils.unknown_type_decl_message id) fmt
+  | [ arg ], _ ->
       let is_tuple_struct =
         PureUtils.type_decl_from_type_id_is_tuple_struct
           ctx.trans_ctx.type_ctx.type_infos proj.adt_id
@@ -1230,13 +1233,13 @@ and extract_field_projector (span : Meta.span) (ctx : extraction_ctx)
         | Coq -> F.pp_print_string fmt ("(" ^ field_name ^ ")"));
         (* Close the box *)
         F.pp_close_box fmt ()
-  | arg :: args ->
+  | arg :: args, _ ->
       (* Call extract_App again, but in such a way that the first argument is
        * isolated *)
       extract_App span ctx fmt ~inside ~inside_do
         ([%add_loc] mk_app span original_app arg)
         args out_ty
-  | [] ->
+  | [], _ ->
       (* No argument: shouldn't happen *)
       [%admit_raise] span "Unreachable" fmt
 
