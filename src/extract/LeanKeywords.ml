@@ -84,6 +84,7 @@ let lean_keywords : string list =
     "elab_stx_quot";
     "else";
     "end";
+    "ensures";
     "erase_aesop_rules";
     "eval_prec";
     "eval_prio";
@@ -99,6 +100,7 @@ let lean_keywords : string list =
     "from";
     "fun";
     "generalizing";
+    "given";
     "grind_annotated";
     "grind_pattern";
     "grind_propagator";
@@ -212,6 +214,7 @@ let lean_keywords : string list =
     "reportEMatchIssue!";
     "reportIssue!";
     "reprove";
+    "requires";
     "return";
     "run_cmd";
     "run_elab";
@@ -250,6 +253,7 @@ let lean_keywords : string list =
     "throwErrorAt";
     "throwNamedError";
     "throwNamedErrorAt";
+    "throws";
     "to";
     "to_additive_name_hint";
     "to_dual_for";

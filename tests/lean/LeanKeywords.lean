@@ -107,4 +107,46 @@ theorem Rec.end._simpLemma_ («end» : Option Rec) (v : Std.U32) :
 theorem Rec.v._simpLemma_ («end» : Option Rec) (v : Std.U32) :
   (Rec.mk «end» v).v = v := by rfl
 
+/-- [lean_keywords::contract_words]:
+    Source: 'tests/src/lean-keywords.rs', lines 79:0-81:1
+    Visibility: public -/
+def contract_words
+  («given» : Std.U32) («requires» : Std.U32) («ensures» : Std.U32)
+  («throws» : Std.U32) :
+  Result Std.U32
+  := do
+  let i ← «given» + «requires»
+  let i1 ← i + «ensures»
+  i1 + «throws»
+
+/-- [lean_keywords::contract_word_in_loop]: loop body 0:
+    Source: 'tests/src/lean-keywords.rs', lines 87:4-89:5
+    Visibility: public -/
+@[rust_loop_body]
+def contract_word_in_loop_loop.body
+  («given» : Std.U32) (i : Std.U32) :
+  Result (ControlFlow Std.U32 Std.U32)
+  := do
+  if i < «given»
+  then let i1 ← i + 1#u32
+       ok (cont i1)
+  else ok (done i)
+
+/-- [lean_keywords::contract_word_in_loop]: loop 0:
+    Source: 'tests/src/lean-keywords.rs', lines 87:4-89:5
+    Visibility: public -/
+@[rust_loop]
+def contract_word_in_loop_loop
+  («given» : Std.U32) (i : Std.U32) : Result Std.U32 := do
+  loop
+    (fun i1 => contract_word_in_loop_loop.body «given» i1)
+    i
+
+/-- [lean_keywords::contract_word_in_loop]:
+    Source: 'tests/src/lean-keywords.rs', lines 84:0-91:1
+    Visibility: public -/
+@[reducible]
+def contract_word_in_loop (n : Std.U32) : Result Std.U32 := do
+  contract_word_in_loop_loop n 0#u32
+
 end lean_keywords

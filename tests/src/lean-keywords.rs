@@ -73,3 +73,19 @@ pub struct Rec {
     pub end: Option<Box<Rec>>,
     pub v: u32,
 }
+
+/// `given`, `requires`, `ensures` and `throws` are not keywords, but the `def`
+/// command forbids them as names of binders: they must be escaped as well.
+pub fn contract_words(given: u32, requires: u32, ensures: u32, throws: u32) -> u32 {
+    given + requires + ensures + throws
+}
+
+/// A local variable which becomes a binder of the function of a loop.
+pub fn contract_word_in_loop(n: u32) -> u32 {
+    let given = n;
+    let mut i = 0;
+    while i < given {
+        i += 1;
+    }
+    i
+}

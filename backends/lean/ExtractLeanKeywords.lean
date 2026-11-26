@@ -32,10 +32,17 @@ def isIdShaped (s : String) : Bool :=
   | [] => false
   | c :: cs => isIdFirst c && cs.all isIdRest
 
-/-- The identifier-shaped tokens of `env`'s parser token table, sorted. -/
+/-- Words which are not tokens but which the `def` command forbids as identifiers
+    in its binders and its type (`optDeclSig`, `defTypeSpec`): the clauses of a
+    contract. -/
+def forbiddenDefWords : Array String := #["ensures", "given", "requires", "throws"]
+
+/-- The identifier-shaped tokens of `env`'s parser token table and the forbidden
+    `def` words, sorted. -/
 def extractKeywords (env : Environment) : Array String :=
-  (getTokenTable env).values.filter isIdShaped
-    |>.qsort (fun a b => compare a b matches .lt)
+  let tokens := (getTokenTable env).values.filter isIdShaped
+  let forbidden := forbiddenDefWords.filter (fun w => !tokens.contains w)
+  (tokens ++ forbidden).qsort (fun a b => compare a b matches .lt)
 
 /-! ## Render -/
 
