@@ -401,18 +401,37 @@ let translate_crate_to_pure (crate : crate) (marked_ids : marked_ids) :
       let translate_method_sig (trait_decl : LlbcAst.trait_decl)
           (method_id : TraitMethodId.id)
           (bound_method : LlbcAst.trait_method Types.binder) =
-        let sg =
-          SymbolicToPureTypes.translate_flat_trait_method_sigs trans_ctx
-            trait_decl method_id bound_method
-        in
-        (FunOrMethodId.Method (trait_decl.def_id, method_id), sg)
+        try
+          let sg =
+            SymbolicToPureTypes.translate_flat_trait_method_sigs trans_ctx
+              trait_decl method_id bound_method
+          in
+          Some (FunOrMethodId.Method (trait_decl.def_id, method_id), sg)
+        with CFailure error ->
+          let item_meta = bound_method.binder_value.item_meta in
+          let name = name_to_string trans_ctx item_meta.name in
+          let name_pattern =
+            try
+              name_to_pattern_string (Some item_meta.span) trans_ctx
+                item_meta.name
+            with CFailure _ ->
+              "(could not compute the name pattern due to a different error)"
+          in
+          [%warn_opt_span] error.span
+            ("Could not translate the signature of the trait method '" ^ name
+           ^ " because of previous error\nName pattern: '" ^ name_pattern ^ "'"
+           ^ "\nDefinition span: "
+            ^ Errors.raw_span_to_string item_meta.span
+            ^ compute_local_uses_error_message trans_ctx
+                (IdTraitDecl trait_decl.def_id));
+          None
       in
       let translate_trait_methods (trait_decl : LlbcAst.trait_decl) =
         let methods =
           TraitDeclId.Map.find trait_decl.def_id
             trans_ctx.trait_methods_to_extract
         in
-        List.map
+        List.filter_map
           (fun (method_id, bound_method) ->
             translate_method_sig trait_decl method_id bound_method)
           (TraitMethodId.Map.to_list methods)
@@ -1047,11 +1066,20 @@ let export_global (fmt : Format.formatter) (config : gen_config) (ctx : gen_ctx)
     Extract.extract_global_decl ctx fmt pure_global body config.interface;
     Option.iter (EmitJson.record_global_if_enabled ctx) pure_global)
 
+(** Lookup a translated trait declaration. The declaration is missing if its
+    translation failed. *)
+let lookup_trans_trait_decl (ctx : gen_ctx) (id : Pure.trait_decl_id) :
+    Pure.trait_decl =
+  [%unwrap_opt_span]
+    (Option.map
+       (fun (d : LlbcAst.trait_decl) -> d.item_meta.span)
+       (TraitDeclId.Map.find_opt id ctx.crate.trait_decls))
+    (TraitDeclId.Map.find_opt id ctx.trans_trait_decls)
+    "Could not extract the trait declaration: it was not translated because of \
+     a previous error"
+
 let trait_decl_is_builtin (ctx : gen_ctx) (id : Pure.trait_decl_id) : bool =
-  let trait_decl =
-    [%silent_unwrap_opt_span] None
-      (TraitDeclId.Map.find_opt id ctx.trans_trait_decls)
-  in
+  let trait_decl = lookup_trans_trait_decl ctx id in
   let open ExtractBuiltin in
   Option.is_some
     (match_name_find_opt ctx.trans_ctx trait_decl.item_meta.name
@@ -1063,8 +1091,11 @@ let trait_impl_is_builtin (ctx : gen_ctx) (id : Pure.trait_impl_id) : bool =
       (TraitImplId.Map.find_opt id ctx.trans_trait_impls)
   in
   let trait_decl =
-    Pure.TraitDeclId.Map.find trait_impl.impl_trait.trait_decl_id
-      ctx.trans_trait_decls
+    [%unwrap_opt_span] (Some trait_impl.item_meta.span)
+      (Pure.TraitDeclId.Map.find_opt trait_impl.impl_trait.trait_decl_id
+         ctx.trans_trait_decls)
+      "Could not extract the trait implementation: the declaration of the \
+       implemented trait was not translated because of a previous error"
   in
   let builtin_info =
     let open ExtractBuiltin in
@@ -1081,10 +1112,7 @@ let trait_impl_is_builtin (ctx : gen_ctx) (id : Pure.trait_impl_id) : bool =
 let export_trait_decl (fmt : Format.formatter) (_config : gen_config)
     (ctx : gen_ctx) (trait_decl_id : Pure.trait_decl_id) (extract_decl : bool)
     (extract_extra_info : bool) : unit =
-  let trait_decl =
-    [%silent_unwrap_opt_span] None
-      (TraitDeclId.Map.find_opt trait_decl_id ctx.trans_trait_decls)
-  in
+  let trait_decl = lookup_trans_trait_decl ctx trait_decl_id in
   (* Check if the trait declaration is builtin, in which case we ignore it *)
   if not (trait_decl_is_builtin ctx trait_decl_id) then (
     let ctx = { ctx with trait_decl_id = Some trait_decl.def_id } in

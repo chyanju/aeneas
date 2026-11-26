@@ -1,0 +1,37 @@
+[[91mError[39m] Unimplemented
+Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 392
+[[93mWarn[39m ] Could not translate the signature of the trait method 'trait_method_sig_failure::Tr::get because of previous error
+Name pattern: 'trait_method_sig_failure::Tr::get'
+Definition span: 'tests/src/trait-method-sig-failure.rs', lines 13:4-13:42
+Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Compiler source: Translate.ml, line 420
+
+[[93mWarn[39m ] Found an associated type in a trait declaration; trait associated types are usually lifted to become parameters of the trait definition, but this can fail with mutually-recursive traits as well as GATs. Aeneas cannot handle such types today, and the generated code will likely be incorrect.
+Trait declaration: trait_method_sig_failure::Tr
+Source: Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Compiler source: symbolic/SymbolicToPure.ml, line 224
+
+[[91mError[39m] Can not extract trait associated types with parameters
+Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Compiler source: symbolic/SymbolicToPure.ml, line 236
+[[93mWarn[39m ] Could not translate the trait declaration 'trait_method_sig_failure::Tr because of previous error
+Name pattern: 'trait_method_sig_failure::Tr'
+Definition span: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Compiler source: Translate.ml, line 570
+
+[[91mError[39m] Could not extract the trait declaration: it was not translated because of a previous error
+Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
+Compiler source: Translate.ml, line 1073
+[[91mError[39m] Could not extract the trait implementation: the declaration of the implemented trait was not translated because of a previous error
+Source: 'tests/src/trait-method-sig-failure.rs', lines 19:0-27:1
+Compiler source: Translate.ml, line 1094
+[[91mError[39m] Could not find: trait_decl_id: 4
+Source: 'tests/src/trait-method-sig-failure.rs', lines 29:0-31:1
+Compiler source: extract/ExtractBase.ml, line 479
+[[91mError[39m] Could not find: trait_decl: trait_method_sig_failure::Tr (id: 4), method name: ok
+Source: 'tests/src/trait-method-sig-failure.rs', lines 29:0-31:1
+Compiler source: extract/ExtractBase.ml, line 468
+[[92mInfo[39m ] Generated the partial file (because of 6 errors, including 6 unique errors): tests/llbc/lean/TraitMethodSigFailure.lean

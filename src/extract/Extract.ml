@@ -974,13 +974,20 @@ and extract_function_call (span : Meta.span) (ctx : extraction_ctx)
       (match fun_id with
       | FromLlbc (TraitMethod (trait_ref, method_name), lp_id) ->
           let trait_decl_id = trait_ref.trait_decl_ref.trait_decl_id in
-          let trait_decl =
-            TraitDeclId.Map.find trait_decl_id ctx.trans_trait_decls
+          (* The trait declaration is missing if it could not be translated:
+             we then use the span of the call, and the lookup of the method
+             name below reports the error. *)
+          let trait_decl_span =
+            match
+              TraitDeclId.Map.find_opt trait_decl_id ctx.trans_trait_decls
+            with
+            | Some trait_decl -> trait_decl.item_meta.span
+            | None -> span
           in
 
-          [%sanity_check] trait_decl.item_meta.span (lp_id = None);
-          extract_trait_ref trait_decl.item_meta.span ctx fmt
-            TypeDeclId.TreeSet.empty ~inside:true trait_ref;
+          [%sanity_check] trait_decl_span (lp_id = None);
+          extract_trait_ref trait_decl_span ctx fmt TypeDeclId.TreeSet.empty
+            ~inside:true trait_ref;
           let fun_name =
             ctx_get_trait_method span trait_ref.trait_decl_ref.trait_decl_id
               method_name ctx
@@ -1015,17 +1022,22 @@ and extract_function_call (span : Meta.span) (ctx : extraction_ctx)
             end
           | FromLlbc (TraitMethod (trait_ref, method_id), lp_id) -> begin
               [%sanity_check] span (lp_id = None);
-              let trait_decl =
-                TraitDeclId.Map.find trait_ref.trait_decl_ref.trait_decl_id
+              (* The trait declaration is missing if it could not be
+                 translated (the lookup of the method name above reported the
+                 error) *)
+              match
+                TraitDeclId.Map.find_opt trait_ref.trait_decl_ref.trait_decl_id
                   ctx.trans_trait_decls
-              in
-              let meth =
-                List.find
-                  (fun (meth : trait_method) -> meth.method_id = method_id)
-                  trait_decl.methods
-              in
-              let explicit = meth.signature.explicit_info in
-              Some (adjust_explicit_info explicit true generics)
+              with
+              | None -> None
+              | Some trait_decl ->
+                  let meth =
+                    List.find
+                      (fun (meth : trait_method) -> meth.method_id = method_id)
+                      trait_decl.methods
+                  in
+                  let explicit = meth.signature.explicit_info in
+                  Some (adjust_explicit_info explicit true generics)
             end
           | Pure
               (UpdateAtIndex Array | IndexAtIndex Array | IndexMutAtIndex Array)
