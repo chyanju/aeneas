@@ -988,6 +988,12 @@ let eval_unary_op_symbolic (config : config) (span : Meta.span) (unop : unop)
             (* If the following function succeeds, then it means the cast is well-formed
            (otherwise it throws an exception) *)
             let _ = cast_unsize_to_modified_fields span ctx ty0 ty1 in
+            (* The type of a symbolic value must not contain erased regions,
+               but the regions of the target type of the cast are erased *)
+            [%cassert] span (ty_is_rty ty1)
+              "Unsizing casts of boxed values which contain borrows (for \
+               instance [vec![x]] where [x] is a reference) are not supported \
+               yet";
             ty1
         | Cast (CastRawPtr tgt_ty), _ -> tgt_ty
         | _ ->

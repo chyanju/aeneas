@@ -1,0 +1,19 @@
+[[91mError[39m] Unsizing casts of boxed values which contain borrows (for instance [vec![x]] where [x] is a reference) are not supported yet
+Source: 'tests/src/unsize-cast-of-borrows.rs', lines 10:4-10:5
+Compiler source: interp/InterpExpressions.ml, line 993
+[[93mWarn[39m ] Could not translate the body of function 'unsize_cast_of_borrows::unsize_param because of previous error
+Name pattern: 'unsize_cast_of_borrows::unsize_param'
+Definition span: 'tests/src/unsize-cast-of-borrows.rs', lines 9:0-11:1
+Source: 'tests/src/unsize-cast-of-borrows.rs', lines 10:4-10:5
+Compiler source: interp/Interp.ml, line 686
+
+[[91mError[39m] Internal error, please file an issue
+Source: '/rustc/library/alloc/src/macros.rs', lines 60:85-60:94; this code is generated from a macro invocation at: 'tests/src/unsize-cast-of-borrows.rs', lines 16:4-16:11
+Compiler source: interp/Invariants.ml, line 741
+[[93mWarn[39m ] Could not translate the body of function 'unsize_cast_of_borrows::vec_of_ref because of previous error
+Name pattern: 'unsize_cast_of_borrows::vec_of_ref'
+Definition span: 'tests/src/unsize-cast-of-borrows.rs', lines 15:0-17:1
+Source: '/rustc/library/alloc/src/macros.rs', lines 60:85-60:94; this code is generated from a macro invocation at: 'tests/src/unsize-cast-of-borrows.rs', lines 16:4-16:11
+Compiler source: interp/Interp.ml, line 686
+
+[[92mInfo[39m ] Generated the partial file (because of 2 errors, including 2 unique errors): tests/llbc/lean/UnsizeCastOfBorrows.lean

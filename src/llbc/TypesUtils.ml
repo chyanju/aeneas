@@ -95,10 +95,11 @@ let ty_regions (ty : ty) : RegionId.Set.t =
     | RStatic -> ()
     | RLub _ -> [%craise_opt_span] None "Unexpected Lub region"
     | RErased | RBody _ ->
-        raise
-          (Failure "ty_regions shouldn't be called on erased or body regions")
+        [%craise_opt_span] None
+          "ty_regions shouldn't be called on erased or body regions"
     | RVar (Bound _) ->
-        raise (Failure "region_in_set shouldn't be called on bound regions")
+        [%craise_opt_span] None
+          "region_in_set shouldn't be called on bound regions"
     | RVar (Free id) -> s := RegionId.Set.add id !s
   in
   let obj =

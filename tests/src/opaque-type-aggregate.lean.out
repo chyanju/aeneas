@@ -1,6 +1,6 @@
 [[91mError[39m] Can not build a value of the opaque type 'opaque_type_aggregate::R'
 Source: 'tests/src/opaque-type-aggregate.rs', lines 25:4-25:8
-Compiler source: interp/InterpExpressions.ml, line 1318
+Compiler source: interp/InterpExpressions.ml, line 1324
 [[93mWarn[39m ] Could not translate the body of function 'opaque_type_aggregate::mk_r because of previous error
 Name pattern: 'opaque_type_aggregate::mk_r'
 Definition span: 'tests/src/opaque-type-aggregate.rs', lines 24:0-26:1
@@ -9,7 +9,7 @@ Compiler source: interp/Interp.ml, line 686
 
 [[91mError[39m] Can not build a value of the opaque type 'opaque_type_aggregate::P'
 Source: 'tests/src/opaque-type-aggregate.rs', lines 29:4-29:17
-Compiler source: interp/InterpExpressions.ml, line 1318
+Compiler source: interp/InterpExpressions.ml, line 1324
 [[93mWarn[39m ] Could not translate the body of function 'opaque_type_aggregate::mk_p because of previous error
 Name pattern: 'opaque_type_aggregate::mk_p'
 Definition span: 'tests/src/opaque-type-aggregate.rs', lines 28:0-30:1
@@ -18,7 +18,7 @@ Compiler source: interp/Interp.ml, line 686
 
 [[91mError[39m] Can not build a value of the opaque type 'opaque_type_aggregate::E'
 Source: 'tests/src/opaque-type-aggregate.rs', lines 33:4-33:11
-Compiler source: interp/InterpExpressions.ml, line 1318
+Compiler source: interp/InterpExpressions.ml, line 1324
 [[93mWarn[39m ] Could not translate the body of function 'opaque_type_aggregate::mk_e because of previous error
 Name pattern: 'opaque_type_aggregate::mk_e'
 Definition span: 'tests/src/opaque-type-aggregate.rs', lines 32:0-34:1
@@ -27,7 +27,7 @@ Compiler source: interp/Interp.ml, line 686
 
 [[91mError[39m] Can not build a value of the opaque type 'opaque_type_aggregate::E'
 Source: 'tests/src/opaque-type-aggregate.rs', lines 37:4-37:8
-Compiler source: interp/InterpExpressions.ml, line 1318
+Compiler source: interp/InterpExpressions.ml, line 1324
 [[93mWarn[39m ] Could not translate the body of function 'opaque_type_aggregate::mk_e_unit because of previous error
 Name pattern: 'opaque_type_aggregate::mk_e_unit'
 Definition span: 'tests/src/opaque-type-aggregate.rs', lines 36:0-38:1
@@ -36,7 +36,7 @@ Compiler source: interp/Interp.ml, line 686
 
 [[91mError[39m] Can not build a value of the opaque type 'opaque_type_aggregate::D'
 Source: 'tests/src/opaque-type-aggregate.rs', lines 21:9-21:16
-Compiler source: interp/InterpExpressions.ml, line 1318
+Compiler source: interp/InterpExpressions.ml, line 1324
 [[93mWarn[39m ] Could not translate the body of function 'opaque_type_aggregate::{impl core::default::Default for opaque_type_aggregate::D}::default because of previous error
 Name pattern: 'opaque_type_aggregate::{core::default::Default<opaque_type_aggregate::D>}::default'
 Definition span: 'tests/src/opaque-type-aggregate.rs', lines 21:9-21:16
