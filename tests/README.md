@@ -69,6 +69,12 @@ that case we don't record the output, which is done with `//@ no-check-output`).
 
 It is useful to add tests there whenever you find an interesting failure case.
 
+The test runner calls `aeneas` with `-abort-on-error`, so the output stops at the first error. To
+record that an error only costs the definition where it occurs, add `//@ no-abort-on-error`: the
+output then lists all the errors, and the partial files that `aeneas` generates go to the `llbc`
+directory instead of the backend directory. Add `//@ aeneas-args=-log-error MainLogger` as well,
+to remove the lines that change from one run to the next, such as the total execution time.
+
 Note however that this is for failures of Aeneas. Tests that cause Charon errors should be submitted
 to the Charon project. `known-failure` tests will not pass if the error occurs within Charon. Note
 also that there is no option for tests that translate successfully but fail to be verified by the

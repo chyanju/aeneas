@@ -8,6 +8,13 @@ type runner_env = {
 
 let concat_path = List.fold_left Filename.concat ""
 
+(* Create a directory and its missing parents *)
+let rec mkdir_p (dir : string) : unit =
+  if not (Sys.file_exists dir) then (
+    mkdir_p (Filename.dirname dir);
+    (* The directory may have been created by a test running in parallel *)
+    try Sys.mkdir dir 0o777 with Sys_error _ when Sys.file_exists dir -> ())
+
 module Command = struct
   type t = { args : string array; redirect_out : Unix.file_descr option }
   type status = Success | Failure
@@ -73,16 +80,24 @@ let run_aeneas (env : runner_env) (case : Input.t) (backend : Backend.t) =
           | None -> []
           | Some x -> [ x ]
         in
-        [ "-dest"; concat_path ([ env.dest_dir; backend_str ] @ subdir) ]
+        if action = KnownFailure && not per_backend.abort_on_error then (
+          (* The partial files go to the llbc directory. We create the
+             destination so that the output doesn't depend on whether it
+             already exists. *)
+          let dest = concat_path ([ env.llbc_dir; backend_str ] @ subdir) in
+          mkdir_p dest;
+          [ "-dest"; dest ])
+        else [ "-dest"; concat_path ([ env.dest_dir; backend_str ] @ subdir) ]
   in
 
   (* Build the command *)
   let args = [ env.aeneas_path; input_file ] @ dest_command @ backend_command in
   (* Abort on error to help debugging, except for borrow-check failure cases
-     where that would be too noisy. *)
+     where that would be too noisy, and for the tests which ask not to. *)
   let abort_on_error =
     match action with
     | KnownFailure when backend = Backend.BorrowCheck -> []
+    | _ when not per_backend.abort_on_error -> []
     | _ -> [ "-abort-on-error" ]
   in
   let args =

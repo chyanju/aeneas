@@ -1,2 +1,4 @@
 *.llbc
 target/
+# Temporary files of the test runner
+/llbc/

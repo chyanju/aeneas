@@ -10,6 +10,8 @@ type per_backend = {
   subdir : string option;
   (* Whether to store the command output to a file. Only available for known-failure tests. *)
   check_output : bool;
+  (* Whether to call aeneas with `-abort-on-error`. *)
+  abort_on_error : bool;
 }
 
 (* The data for a specific test input *)
@@ -38,6 +40,9 @@ let default_subdir (kind : kind) backend test_name : string option =
    Supported comments:
      - `skip`: don't process the file;
      - `known-failure`: TODO;
+     - `no-abort-on-error`: do not pass `-abort-on-error` to aeneas, so that it reports all the
+          errors and translates the other definitions. For a known-failure test, the generated
+          files go to the llbc directory instead of the backend directory;
      - `subdir=...: set the subdirectory in which to store the outputs.
           Defaults to nothing for lean and to the test name for other backends;
      - `charon-args=...`: extra arguments to pass to charon;
@@ -89,6 +94,8 @@ let apply_special_comment comment input =
     per_backend (fun x -> { x with action = KnownFailure })
   else if comment = "no-check-output" then
     per_backend (fun x -> { x with check_output = false })
+  else if comment = "no-abort-on-error" then
+    per_backend (fun x -> { x with abort_on_error = false })
   else if Option.is_some charon_args then (
     let args = Option.get charon_args in
     let args = String.split_on_char ' ' args in
@@ -120,6 +127,7 @@ let build (path : string) : t =
           subdir = default_subdir kind backend name;
           aeneas_options = [];
           check_output = true;
+          abort_on_error = true;
         })
   in
   let input = { path; name; kind; charon_options = []; per_backend } in
