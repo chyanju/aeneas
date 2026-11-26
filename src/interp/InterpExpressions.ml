@@ -1312,8 +1312,14 @@ let eval_rvalue_aggregate (config : config) (span : Meta.span)
             (aggregated, fun e -> e)
         | None ->
             let def_id = tref.id in
-            (* Sanity checks *)
             let type_decl = ctx_lookup_type_decl span ctx def_id in
+            (* We don't know the fields of an opaque type *)
+            if type_decl_is_opaque type_decl then
+              [%craise] span
+                ("Can not build a value of the opaque type '"
+                ^ name_to_string ctx type_decl.item_meta.name
+                ^ "'");
+            (* Sanity checks *)
             [%sanity_check] span
               (List.length type_decl.generics.regions
               = List.length generics.regions);
