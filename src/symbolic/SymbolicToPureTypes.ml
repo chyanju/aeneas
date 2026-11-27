@@ -1244,8 +1244,19 @@ and get_fun_effect_info (ctx : bs_ctx) (fun_id : fn_ptr_kind)
   match fun_id with
   | TraitMethod _ | FunId _ ->
       let sg =
-        [%silent_unwrap_opt_span] (Some ctx.span)
+        [%unwrap_opt_span] (Some ctx.span)
           (lookup_pure_fn_ptr_sig ctx fun_id)
+          (match fun_id with
+          | FunId _ ->
+              "Could not find the signature of a function: it was not \
+               translated because of a previous error"
+          | TraitMethod (trait_ref, method_id) ->
+              "Could not find the signature of the trait method '"
+              ^ Charon.GAstUtils.get_method_name ctx.decls_ctx.crate
+                  trait_ref.trait_decl_ref.trait_decl_id method_id
+              ^ "': it was not translated, because of a previous error or \
+                 because the trait is builtin and its model does not define \
+                 this method")
       in
       let sg = sg.dsg in
       let info =

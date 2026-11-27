@@ -185,8 +185,38 @@ let translate_trait_method (ctx : Contexts.decls_ctx) (span : span option)
         bound_method;
   }
 
-let translate_trait_decl (ctx : Contexts.decls_ctx) (trait_decl : A.trait_decl)
-    : trait_decl =
+(** The methods of a trait declaration which we translate as fields of this
+    declaration.
+
+    If the trait is builtin, these are the methods of its model: the model
+    doesn't have fields for the other methods, so we can neither declare them
+    nor define them in the implementations of the trait (and a use of such a
+    method through a trait clause is an error). Otherwise, these are all the
+    methods to extract. *)
+let trait_decl_methods_to_translate (ctx : Contexts.decls_ctx)
+    (trait_decl : A.trait_decl) :
+    (TraitMethodId.id * A.trait_method T.binder) list =
+  let methods =
+    TraitMethodId.Map.to_list
+      (TraitDeclId.Map.find trait_decl.def_id ctx.trait_methods_to_extract)
+  in
+  match
+    match_name_find_opt ctx trait_decl.item_meta.name
+      (ExtractBuiltin.builtin_trait_decls_map ())
+  with
+  | None -> methods
+  | Some info ->
+      List.filter
+        (fun ((_, m) : _ * A.trait_method T.binder) ->
+          List.mem_assoc m.binder_value.name info.methods)
+        methods
+
+(** [method_sig_translated]: returns [false] for the methods whose signature we
+    could not translate (the error was reported then): we do not translate such
+    methods, which are thus absent from the trait declaration. *)
+let translate_trait_decl (ctx : Contexts.decls_ctx)
+    ~(method_sig_translated : TraitMethodId.id -> bool)
+    (trait_decl : A.trait_decl) : trait_decl =
   let {
     def_id;
     item_meta;
@@ -248,14 +278,25 @@ let translate_trait_decl (ctx : Contexts.decls_ctx) (trait_decl : A.trait_decl)
         (const_id, c.name, translate_ty c.ty))
       (T.AssocConstId.Map.to_list consts)
   in
-  let methods_to_extract =
-    TraitDeclId.Map.find def_id ctx.trait_methods_to_extract
-  in
   let methods =
-    List.map
+    List.filter_map
       (fun ((method_id, m) : TraitMethodId.id * A.trait_method T.binder) ->
-        translate_trait_method ctx opt_span translate_ty trait_decl method_id m)
-      (TraitMethodId.Map.to_list methods_to_extract)
+        if method_sig_translated method_id then (
+          try
+            Some
+              (translate_trait_method ctx opt_span translate_ty trait_decl
+                 method_id m)
+          with CFailure error ->
+            (* We only drop the method: its uses through a trait clause will
+               fail, and we skip it in the implementations of the trait *)
+            [%warn_opt_span] error.span
+              ("Could not translate the method '" ^ m.binder_value.name
+             ^ "' of the trait declaration '" ^ name
+             ^ "' because of previous error: the trait declaration is \
+                translated without this method");
+            None)
+        else None)
+      (trait_decl_methods_to_translate ctx trait_decl)
   in
   {
     def_id;

@@ -427,14 +427,10 @@ let translate_crate_to_pure (crate : crate) (marked_ids : marked_ids) :
           None
       in
       let translate_trait_methods (trait_decl : LlbcAst.trait_decl) =
-        let methods =
-          TraitDeclId.Map.find trait_decl.def_id
-            trans_ctx.trait_methods_to_extract
-        in
         List.filter_map
           (fun (method_id, bound_method) ->
             translate_method_sig trait_decl method_id bound_method)
-          (TraitMethodId.Map.to_list methods)
+          (SymbolicToPure.trait_decl_methods_to_translate trans_ctx trait_decl)
       in
       let entries =
         List.concat
@@ -552,9 +548,18 @@ let translate_crate_to_pure (crate : crate) (marked_ids : marked_ids) :
     ProgressBar.with_reporter num_decls "Translated trait declarations: "
       (fun report ->
         List.filter_map
-          (fun d ->
+          (fun (d : LlbcAst.trait_decl) ->
             try
-              let d = SymbolicToPure.translate_trait_decl trans_ctx d in
+              let d =
+                (* The methods whose signature we could not translate above
+                   are absent from the translated declaration *)
+                SymbolicToPure.translate_trait_decl trans_ctx
+                  ~method_sig_translated:(fun method_id ->
+                    FunOrMethodId.Map.mem
+                      (FunOrMethodId.Method (d.def_id, method_id))
+                      fun_sigs)
+                  d
+              in
               report 1;
               Some d
             with CFailure error ->

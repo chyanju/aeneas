@@ -1030,14 +1030,21 @@ and extract_function_call (span : Meta.span) (ctx : extraction_ctx)
                   ctx.trans_trait_decls
               with
               | None -> None
-              | Some trait_decl ->
-                  let meth =
-                    List.find
+              | Some trait_decl -> (
+                  (* The method is missing if it is not a field of the
+                     translated declaration: its signature could not be
+                     translated, or the trait is builtin and its model does
+                     not define this method (the lookup of the method name
+                     above reported the error) *)
+                  match
+                    List.find_opt
                       (fun (meth : trait_method) -> meth.method_id = method_id)
                       trait_decl.methods
-                  in
-                  let explicit = meth.signature.explicit_info in
-                  Some (adjust_explicit_info explicit true generics)
+                  with
+                  | None -> None
+                  | Some meth ->
+                      let explicit = meth.signature.explicit_info in
+                      Some (adjust_explicit_info explicit true generics))
             end
           | Pure
               (UpdateAtIndex Array | IndexAtIndex Array | IndexMutAtIndex Array)
@@ -3453,6 +3460,25 @@ let extract_trait_impl (ctx : extraction_ctx) (fmt : F.formatter)
     ~(is_rec : bool) (impl : trait_impl) : unit =
   [%ltrace name_to_string ctx impl.item_meta.name];
   let span = impl.item_meta.span in
+  (* The methods which are not fields of the translated trait declaration can
+     not be fields of its implementations: we skip the methods whose signature
+     could not be translated and, if the trait is builtin, the methods which
+     are absent from its model (see
+     {!SymbolicToPure.trait_decl_methods_to_translate}). *)
+  let impl =
+    match
+      TraitDeclId.Map.find_opt impl.impl_trait.trait_decl_id
+        ctx.trans_trait_decls
+    with
+    | None -> impl
+    | Some trait_decl ->
+        let is_decl_method (method_id, _, _) =
+          List.exists
+            (fun (meth : trait_method) -> meth.method_id = method_id)
+            trait_decl.methods
+        in
+        { impl with methods = List.filter is_decl_method impl.methods }
+  in
   (* Retrieve the impl name *)
   let impl_name = ctx_get_trait_impl span impl.def_id ctx in
   (* Add a break before *)

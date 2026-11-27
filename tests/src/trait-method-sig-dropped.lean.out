@@ -1,0 +1,16 @@
+[[91mError[39m] Internal error, please file an issue
+Source: 'tests/src/trait-method-sig-dropped.rs', lines 11:0-20:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 1005
+[[93mWarn[39m ] Could not translate the signature of the trait method 'trait_method_sig_dropped::Tr::bad because of previous error
+Name pattern: 'trait_method_sig_dropped::Tr::bad'
+Definition span: 'tests/src/trait-method-sig-dropped.rs', lines 14:4-19:5
+Source: 'tests/src/trait-method-sig-dropped.rs', lines 11:0-20:1
+Compiler source: Translate.ml, line 420
+
+[[91mError[39m] Could not find the signature of the trait method 'bad': it was not translated, because of a previous error or because the trait is builtin and its model does not define this method
+Source: 'tests/src/trait-method-sig-dropped.rs', lines 41:0-43:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 1247
+[[91mError[39m] Could not find the signature of the trait method 'count': it was not translated, because of a previous error or because the trait is builtin and its model does not define this method
+Source: 'tests/src/trait-method-sig-dropped.rs', lines 49:0-51:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 1247
+[[92mInfo[39m ] Generated the partial file (because of 3 errors, including 2 unique errors): tests/llbc/lean/TraitMethodSigDropped.lean

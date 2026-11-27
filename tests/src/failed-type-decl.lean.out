@@ -80,7 +80,7 @@ Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
 Compiler source: extract/ExtractBase.ml, line 479
 [[91mError[39m] Unknown type declaration (id 6): the translation of this type probably failed because of a previous error
 Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
-Compiler source: extract/Extract.ml, line 1147
+Compiler source: extract/Extract.ml, line 1154
 [[91mError[39m] Could not find: type name: failed_type_decl::S, field name: n
 Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
 Compiler source: extract/ExtractBase.ml, line 468
@@ -98,5 +98,5 @@ Source: 'tests/src/failed-type-decl.rs', lines 48:0-50:1
 Compiler source: extract/ExtractBase.ml, line 479
 [[91mError[39m] Unknown type declaration (id 6): the translation of this type probably failed because of a previous error
 Source: 'tests/src/failed-type-decl.rs', lines 48:0-50:1
-Compiler source: extract/Extract.ml, line 1147
+Compiler source: extract/Extract.ml, line 1154
 [[92mInfo[39m ] Generated the partial file (because of 21 errors, including 6 unique errors): tests/llbc/lean/FailedTypeDecl.lean
