@@ -1141,39 +1141,49 @@ let export_trait_impl (fmt : Format.formatter) (_config : gen_config)
     Extract.extract_trait_impl ctx fmt ~is_rec trait_impl;
     EmitJson.record_trait_impl_if_enabled ctx trait_impl)
 
-(** Extract a group of definitions on a page which is wide enough, for Lean.
+(** Extract a group of definitions for Lean.
 
-    [extract] extracts the group to a formatter. In Lean the layout delimits the
-    blocks of code (the instructions of a [do], the branches of a [match]), and
-    the formatter doesn't indent a line beyond its maximum indentation: the
-    lines of a deeply nested definition (for instance a long chain of
-    [if ... else if ...]) are all aligned on this limit, and Lean can't parse
-    them. We thus extract the group to a buffer; if a line reaches the maximum
-    indentation we extract the group again, on a page which is wider (with a
-    bigger margin and a bigger maximum indentation), until no line does. The
-    width of the page only changes the layout: we print the same tokens. *)
-let extract_decl_group_on_wide_enough_page (fmt : Format.formatter)
-    (extract : Format.formatter -> unit) : unit =
+    [extract] extracts the group to a formatter, in a context. We extract the
+    group to a buffer first, and we may have to extract it again:
+
+    - if a local variable shadows the first component of a qualified name that
+      we print in its scope (see {!ExtractBase.shadowing_vars}), we extract the
+      group again in a context where the name of this variable is reserved: the
+      variable then gets a fresh name;
+    - in Lean the layout delimits the blocks of code (the instructions of a
+      [do], the branches of a [match]), and the formatter doesn't indent a line
+      beyond its maximum indentation: the lines of a deeply nested definition
+      (for instance a long chain of [if ... else if ...]) are all aligned on
+      this limit, and Lean can't parse them. If a line reaches the maximum
+      indentation we extract the group again, on a page which is wider (with a
+      bigger margin and a bigger maximum indentation), until no line does. The
+      width of the page only changes the layout: we print the same tokens. *)
+let extract_decl_group_for_lean (fmt : Format.formatter) (ctx : gen_ctx)
+    (extract : gen_ctx -> Format.formatter -> unit) : unit =
+  let open ExtractBase in
   let margin = Format.pp_get_margin fmt () in
   let max_indent = Format.pp_get_max_indent fmt () in
-  (* Extract the group on a page which is wider by [extra] columns. If an
-     exception interrupts the extraction, we return it with the text that was
-     extracted before. *)
-  let extract_to_string (extra : int) : string * Errors.cfailure option =
+  (* Extract the group on a page which is wider by [extra] columns. We return
+     the text, the exception which interrupted the extraction if there is one
+     (the text is then what was extracted before), and the local variables
+     which shadow a namespace. *)
+  let extract_to_string (ctx : gen_ctx) (extra : int) :
+      string * Errors.cfailure option * StringSet.t =
     let buf = Buffer.create 4096 in
     let bfmt = Format.formatter_of_buffer buf in
     Format.pp_set_geometry bfmt ~max_indent:(max_indent + extra)
       ~margin:(margin + extra);
     (* The definitions are in a vertical box (see [extract_file]) *)
     Format.pp_open_vbox bfmt 0;
+    shadowing_vars := StringSet.empty;
     let failure =
       try
-        extract bfmt;
+        extract ctx bfmt;
         None
       with CFailure error -> Some error
     in
     Format.pp_print_flush bfmt ();
-    (Buffer.contents buf, failure)
+    (Buffer.contents buf, failure, !shadowing_vars)
   in
   let reaches_max_indent (extra : int) (s : string) : bool =
     List.exists
@@ -1186,23 +1196,40 @@ let extract_decl_group_on_wide_enough_page (fmt : Format.formatter)
         i < n && i >= max_indent + extra)
       (String.split_on_char '\n' s)
   in
-  let s, failure = extract_to_string 0 in
+  let s, failure, shadowing = extract_to_string ctx 0 in
   let s =
-    if failure = None && reaches_max_indent 0 s then (
+    if
+      failure = None
+      && ((not (StringSet.is_empty shadowing)) || reaches_max_indent 0 s)
+    then (
       (* Extract the group again: its errors and its warnings were reported by
          the first extraction, and it was recorded *)
       let emit_json = !Config.emit_json in
       Config.emit_json := false;
+      (* Reserve the names of the variables which shadow a namespace, as long
+         as there are such variables (the fresh name of a variable may shadow
+         another namespace) *)
+      let rec rename (fuel : int) (ctx : gen_ctx) (s : string)
+          (shadowing : StringSet.t) : gen_ctx * string =
+        if StringSet.is_empty shadowing || fuel = 0 then (ctx, s)
+        else
+          let ctx = ctx_reserve_names (StringSet.elements shadowing) ctx in
+          let s, _, shadowing = extract_to_string ctx 0 in
+          rename (fuel - 1) ctx s shadowing
+      in
       let step = 40 in
-      let rec widen (extra : int) : string =
-        let s, _ = extract_to_string extra in
+      let rec widen (ctx : gen_ctx) (extra : int) : string =
+        let s, _, _ = extract_to_string ctx extra in
         if reaches_max_indent extra s && extra < 100 * step then
-          widen (extra + step)
+          widen ctx (extra + step)
         else s
       in
       Fun.protect
         ~finally:(fun () -> Config.emit_json := emit_json)
-        (fun () -> Errors.silently (fun () -> widen step)))
+        (fun () ->
+          Errors.silently (fun () ->
+              let ctx, s = rename 10 ctx s shadowing in
+              if reaches_max_indent 0 s then widen ctx step else s)))
     else s
   in
   (* The text is already laid out: it doesn't count in the current line *)
@@ -1223,22 +1250,25 @@ let extract_definitions (fmt : Format.formatter) (config : gen_config)
      - [extract_extra_info]: extra the extra type information (e.g.,
        the [Arguments] information in Coq).
   *)
-  (* The formatter to which we export the current group of definitions: see
-     the end of the function *)
+  (* The formatter to which we export the current group of definitions, and
+     the context in which we do so: see the end of the function *)
   let group_fmt = ref fmt in
+  let group_ctx = ref ctx in
   let export_functions_group x =
-    export_functions_group !group_fmt config ctx x
+    export_functions_group !group_fmt config !group_ctx x
   in
-  let export_global x = export_global !group_fmt config ctx x in
-  let export_types_group x y = export_types_group !group_fmt config ctx x y in
+  let export_global x = export_global !group_fmt config !group_ctx x in
+  let export_types_group x y =
+    export_types_group !group_fmt config !group_ctx x y
+  in
   let export_trait_decl_group id =
-    export_trait_decl !group_fmt config ctx id true false
+    export_trait_decl !group_fmt config !group_ctx id true false
   in
   let export_trait_decl_group_extra_info id =
-    export_trait_decl !group_fmt config ctx id false true
+    export_trait_decl !group_fmt config !group_ctx id false true
   in
   let export_trait_impl ~is_rec x =
-    export_trait_impl !group_fmt config ctx ~is_rec x
+    export_trait_impl !group_fmt config !group_ctx ~is_rec x
   in
 
   let export_decl_group (dg : declaration_group) : unit =
@@ -1381,11 +1411,12 @@ let extract_definitions (fmt : Format.formatter) (config : gen_config)
   in
 
   (* For Lean, we extract every group to a buffer first: see
-     [extract_decl_group_on_wide_enough_page] *)
+     [extract_decl_group_for_lean] *)
   let export_decl_group (dg : declaration_group) : unit =
     match Config.backend () with
     | Lean ->
-        extract_decl_group_on_wide_enough_page fmt (fun buffer_fmt ->
+        extract_decl_group_for_lean fmt ctx (fun buffer_ctx buffer_fmt ->
+            group_ctx := buffer_ctx;
             group_fmt := buffer_fmt;
             export_decl_group dg)
     | FStar | Coq | HOL4 -> export_decl_group dg
@@ -1666,6 +1697,7 @@ let extract_translated_crate (filename : string) (dest_dir : string)
       use_dep_ite =
         Config.backend () = Lean && !Config.extract_decreases_clauses;
       trait_decl_id = None (* None by default *);
+      scoped_vars = ExtractBase.StringSet.empty;
       trans_trait_decls;
       trans_trait_impls;
       trans_types;

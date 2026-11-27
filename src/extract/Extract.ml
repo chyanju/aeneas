@@ -1282,6 +1282,10 @@ and extract_Lambda (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
         extract_tpat span ctx fmt ~is_let:true ~inside:true ~with_type x)
       ctx xl
   in
+  (* The variables are in scope in the body *)
+  let ctx =
+    List.fold_left (fun ctx x -> ctx_scope_tpat_vars span x ctx) ctx xl
+  in
   F.pp_print_space fmt ();
   if backend () = Lean || backend () = Coq then F.pp_print_string fmt "=>"
   else F.pp_print_string fmt "->";
@@ -1424,8 +1428,8 @@ and extract_lets (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
     end_let ();
     F.pp_close_box fmt ();
     F.pp_print_space fmt ();
-    (* Return *)
-    ctx
+    (* Return: the variables are in scope after the bound expression *)
+    ctx_scope_tpat_vars span lv ctx
   in
   (* Open parentheses *)
   if inside then F.pp_print_string fmt "(";
@@ -1589,6 +1593,8 @@ and extract_Switch (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
         let ctx =
           extract_tpat span ctx fmt ~is_let:false ~inside:false br.pat
         in
+        (* The variables are in scope in the branch *)
+        let ctx = ctx_scope_tpat_vars span br.pat ctx in
         F.pp_print_space fmt ();
         let arrow =
           match backend () with
@@ -1832,7 +1838,9 @@ let extract_fun_parameters (space : bool ref) (ctx : extraction_ctx)
             F.pp_print_string fmt ")";
             (* Close the box for the input parameters *)
             F.pp_close_box fmt ();
-            ctx)
+            (* The variables are in scope in the parameters which follow, in
+               the return type and in the body *)
+            ctx_scope_tpat_vars def.item_meta.span lv ctx)
           ctx body.inputs
   in
   let type_params = List.combine explicit.explicit_types type_params in
@@ -2222,8 +2230,11 @@ let extract_fun_decl_gen (ctx : extraction_ctx) (fmt : F.formatter)
       if backend () = FStar then (
         F.pp_print_string fmt "Tot";
         F.pp_print_space fmt ()));
-    extract_ty def.item_meta.span ctx fmt TypeDeclId.TreeSet.empty
-      ~inside:has_decreases_clause def.signature.output;
+    (* The parameters are in scope in the return type *)
+    extract_ty def.item_meta.span
+      { ctx with scoped_vars = ctx_body.scoped_vars }
+      fmt TypeDeclId.TreeSet.empty ~inside:has_decreases_clause
+      def.signature.output;
     (* Close the box for the return type *)
     F.pp_close_box fmt ();
     (* Print the decrease clause - rk.: a function with a decreases clause

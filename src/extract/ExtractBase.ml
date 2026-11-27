@@ -593,6 +593,12 @@ type extraction_ctx = {
           ]} *)
   trait_decl_id : trait_decl_id option;
       (** If we are extracting a trait declaration, identifies it *)
+  scoped_vars : StringSet.t;
+      (** The names of the local variables which are in scope at the point of
+          the code that we are extracting. A variable is not in scope in its own
+          type, nor in the expression that it is bound to: we add its name to
+          this set after we extracted them, while we add it to the names map as
+          soon as we extract its binder. See {!shadowing_vars}. *)
   trans_types : Pure.type_decl Pure.TypeDeclId.Map.t;
   trans_funs : pure_fun_translation A.FunDeclId.Map.t;
   trans_globals : Pure.global_decl Pure.GlobalDeclId.Map.t;
@@ -808,11 +814,56 @@ let ctx_get_raw (span : Meta.span option) (id : id) (ctx : extraction_ctx) :
   let id_to_string (id : id) : string = id_to_string span id ctx in
   names_maps_get span id_to_string id ctx.names_maps
 
+(** For Lean: the names of the local variables which shadow a namespace.
+
+    In [x.y.z], Lean reads [x] as a local variable if there is one in scope: a
+    variable [term] makes the function [term.make] unreachable ([term.make] is
+    then the field [make] of [term]). Whenever we retrieve the qualified name of
+    a declaration while a local variable has the name of its first component, we
+    register this variable here. We then extract the definition again, with
+    fresh names for these variables (see {!Translate.extract_definitions}). *)
+let shadowing_vars : StringSet.t ref = ref StringSet.empty
+
+(** [true] if the id is the id of a declaration (as opposed to a variable, or a
+    field of a structure) *)
+let id_is_decl (id : id) : bool =
+  match id with
+  | GlobalId _
+  | GlobalPureValueId _
+  | FunId _
+  | TerminationMeasureId _
+  | DecreasesProofId _
+  | TypeId _
+  | StructId _
+  | VariantId _
+  | TraitDeclId _
+  | TraitImplId _
+  | TraitDeclConstructorId _ -> true
+  | FieldId _
+  | FVarId _
+  | TypeVarId _
+  | ConstGenericVarId _
+  | LocalTraitClauseId _
+  | TraitMethodId _
+  | TraitTypeId _
+  | TraitConstId _
+  | TraitParentClauseId _
+  | KeywordId -> false
+
 (** Retrieve a name from the names maps, escaped if needed: the result is meant
     to be printed. See {!escape_name} for the meaning of [qualified]. *)
 let ctx_get ?(qualified : bool = false) (span : Meta.span option) (id : id)
     (ctx : extraction_ctx) : string =
-  escape_name ~qualified (ctx_get_raw span id ctx)
+  let name = ctx_get_raw span id ctx in
+  (* Check if a local variable shadows the first component of the name *)
+  (if backend () = Lean && id_is_decl id then
+     match String.index_opt name '.' with
+     | Some i ->
+         let root = String.sub name 0 i in
+         if StringSet.mem root ctx.scoped_vars then
+           shadowing_vars := StringSet.add root !shadowing_vars
+     | None -> ());
+  escape_name ~qualified name
 
 let ctx_get_global (span : Meta.span) (id : A.GlobalDeclId.id)
     (ctx : extraction_ctx) : string =
@@ -2165,6 +2216,19 @@ let ctx_add_local_trait_clause (span : Meta.span) (origin : generic_origin)
   let name = basename_to_unique ctx basename in
   let ctx = ctx_add span (LocalTraitClauseId (origin, id)) name ctx in
   (ctx, escape_name name)
+
+(** Register that the variables bound by a pattern are in scope from now on (see
+    the field [scoped_vars] of the context). *)
+let ctx_scope_tpat_vars (span : Meta.span) (pat : tpat) (ctx : extraction_ctx) :
+    extraction_ctx =
+  let scoped_vars =
+    FVarId.Set.fold
+      (fun id vars ->
+        StringSet.add (ctx_get_raw (Some span) (FVarId id) ctx) vars)
+      (PureUtils.tpat_get_fvars pat)
+      ctx.scoped_vars
+  in
+  { ctx with scoped_vars }
 
 (** See {!ctx_add_var} *)
 let ctx_add_vars (span : Meta.span) (vars : fvar list) (ctx : extraction_ctx) :
