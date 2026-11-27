@@ -1099,7 +1099,7 @@ let eval_ctx_has_markers (ctx : eval_ctx) : bool =
 
     At the end of the second step, all markers should have been removed from the
     resulting environment. *)
-let collapse_ctx_aux config (span : Meta.span)
+let collapse_ctx_aux config (span : Meta.span) ~(recoverable : bool)
     (sequence : (abs_id * abs_id * abs_id) list ref option)
     (shared_borrows_seq :
       (abs_id * int * proj_marker * borrow_or_proj * ty) list ref option)
@@ -1148,7 +1148,7 @@ let collapse_ctx_aux config (span : Meta.span)
     ^ eval_ctx_to_string ctx];
 
   (* Sanity check: there are no markers remaining *)
-  [%sanity_check] span (not (eval_ctx_has_markers ctx));
+  [%sanity_check_recover] recoverable span (not (eval_ctx_has_markers ctx));
 
   (* One last cleanup *)
   let ctx, _ =
@@ -1379,8 +1379,8 @@ let collapse_ctx config (span : Meta.span)
       ~with_abs_conts ctx
   in
   try
-    collapse_ctx_aux config span ~with_abs_conts sequence shared_borrows_seq
-      fresh_abs_kind merge_funs ctx
+    collapse_ctx_aux config span ~recoverable ~with_abs_conts sequence
+      shared_borrows_seq fresh_abs_kind merge_funs ctx
   with ValueMatchFailure _ -> [%internal_error] span
 
 let add_shared_borrows (span : Meta.span)
