@@ -1568,7 +1568,10 @@ let match_ctx_with_target (config : config) (span : Meta.span)
         joined_ctx
     with
     | Some ctx -> ctx
-    | None -> [%craise] span "Could not match the contexts"
+    | None ->
+        (* The error is recoverable if the caller allows it: after a branching
+           it can then decide not to join, and duplicate the code instead. *)
+        [%craise_recover] recoverable span "Could not match the contexts"
   in
   [%ltrace
     "The match was successful:" ^ "\n\n- src_ctx: "
