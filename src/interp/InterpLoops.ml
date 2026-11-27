@@ -200,7 +200,9 @@ let eval_loop_symbolic_synthesize_loop_body (config : config) (span : span)
                We destructure the shared loans in the abstractions which appear in
                [ctx] but not [fp_ctx]. TODO: generalize. *)
             let ctx, cc =
-              comp cc (InterpJoin.destructure_shared_loans span fixed_aids ctx)
+              comp cc
+                (InterpJoin.destructure_shared_loans span ~recoverable:false
+                   fixed_aids ctx)
             in
             [%ltrace
               "- ctx after simplify_ended_shared_loans:\n"

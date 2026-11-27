@@ -82,6 +82,7 @@ package «tests» {}
 @[default_target] lean_lib JoinDuplicate
 @[default_target] lean_lib JoinMarkersRecover
 @[default_target] lean_lib JoinMatchRecover
+@[default_target] lean_lib JoinStaticBorrowRecover
 @[default_target] lean_lib Joins
 @[default_target] lean_lib LeanKeywords
 @[default_target] lean_lib LeanKeywordsClash

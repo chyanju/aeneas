@@ -1203,8 +1203,8 @@ let loop_join_break_ctxs (config : config) (span : Meta.span)
 
 (** TODO: this is a bit of a hack: remove once the avalues are properly
     destructured. *)
-let destructure_shared_loans (span : Meta.span) (fixed_aids : AbsId.Set.t) :
-    cm_fun =
+let destructure_shared_loans (span : Meta.span) ~(recoverable : bool)
+    (fixed_aids : AbsId.Set.t) : cm_fun =
  fun ctx ->
   let bindings = ref [] in
 
@@ -1214,9 +1214,10 @@ let destructure_shared_loans (span : Meta.span) (fixed_aids : AbsId.Set.t) :
     | VAdt { variant_id; fields } ->
         let fields = List.map copy_value fields in
         { v with value = VAdt { variant_id; fields } }
-    | VBorrow _ | VLoan _ -> [%craise] span "Not implemented"
+    | VBorrow _ | VLoan _ ->
+        [%craise_recover] recoverable span "Not implemented"
     | VSymbolic sv ->
-        [%cassert] span
+        [%cassert_recover] recoverable span
           (not (symbolic_value_has_borrows (Some span) ctx sv))
           "Not implemented";
         let sv' =
@@ -1248,7 +1249,7 @@ let destructure_shared_loans (span : Meta.span) (fixed_aids : AbsId.Set.t) :
           | VSharedLoan (lid, sv) ->
               let sv, avl = destructure_value abs sv in
               let ty = sv.ty in
-              [%cassert] span
+              [%cassert_recover] recoverable span
                 (not
                    (TypesUtils.ty_has_borrows (Some span)
                       ctx.type_ctx.type_infos ty))
@@ -1318,7 +1319,8 @@ let destructure_shared_loans (span : Meta.span) (fixed_aids : AbsId.Set.t) :
                 (* Shouldn't find ended borrows in live abstractions *)
                 [%internal_error] span
             | AEndedIgnoredMutBorrow _ -> (bc, [])
-            | AProjSharedBorrow _ -> [%craise] span "Not implemented"
+            | AProjSharedBorrow _ ->
+                [%craise_recover] recoverable span "Not implemented"
           in
           (ABorrow bc, avl)
       | ASymbolic _ | AIgnored _ -> (av.value, [])
@@ -1403,7 +1405,7 @@ let match_ctx_with_target (config : config) (span : Meta.span)
      We destructure the shared loans in the abstractions which appear in
      [tgt_ctx] but not [src_ctx]. TODO: generalize. *)
   let tgt_ctx, cc =
-    comp cc (destructure_shared_loans span fixed_aids tgt_ctx)
+    comp cc (destructure_shared_loans span ~recoverable fixed_aids tgt_ctx)
   in
   [%ltrace
     "- tgt_ctx after simplify_ended_shared_loans:\n"
