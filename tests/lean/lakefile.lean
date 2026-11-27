@@ -33,6 +33,7 @@ package «tests» {}
 @[default_target] lean_lib ConstantsLean
 @[default_target] lean_lib ConstShadow
 @[default_target] lean_lib Curve25519
+@[default_target] lean_lib DeepIfChain
 @[default_target] lean_lib Default
 @[default_target] lean_lib DefaultedMethod
 @[default_target] lean_lib Demo

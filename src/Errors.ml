@@ -83,23 +83,36 @@ module FileLineMap = Collections.MakeMap (FileLineOrderedType)
 let error_list : (string * int * Meta.span option * string) list ref = ref []
 let unique_errors = ref FileLineMap.empty
 
+(** If [true], we neither register nor print the errors and the warnings: see
+    {!silently}. *)
+let silent = ref false
+
+(** Run [f] without registering and without printing the errors and the
+    warnings. We use this to do again a computation whose errors and warnings we
+    already reported. *)
+let silently (f : unit -> 'a) : 'a =
+  let saved = !silent in
+  silent := true;
+  Fun.protect ~finally:(fun () -> silent := saved) f
+
 (** Save an error and print it at the same time.
 
     We prefer printing errors gradually rather than reporting everyting at the
     very end. *)
 let push_error (file : string) (line : int) (span : Meta.span option)
     (msg : string) =
-  Mutex.protect error_mutex (fun _ ->
-      error_list := (file, line, span, msg) :: !error_list;
-      unique_errors :=
-        FileLineMap.update (file, line)
-          (function
-            | None -> Some 1
-            | Some n -> Some (n + 1))
-          !unique_errors);
-  if !Config.print_error_emitters then
-    log#serror (format_error_message_with_file_line file line span msg)
-  else log#serror (format_error_message span msg)
+  if not !silent then (
+    Mutex.protect error_mutex (fun _ ->
+        error_list := (file, line, span, msg) :: !error_list;
+        unique_errors :=
+          FileLineMap.update (file, line)
+            (function
+              | None -> Some 1
+              | Some n -> Some (n + 1))
+            !unique_errors);
+    if !Config.print_error_emitters then
+      log#serror (format_error_message_with_file_line file line span msg)
+    else log#serror (format_error_message span msg))
 
 (** Register an error, and throw an exception if [throw] is true *)
 let save_error_opt_span (file : string) (line : int) (span : Meta.span option)
@@ -195,7 +208,7 @@ let internal_error (file : string) (line : int) (span : Meta.span) =
 let warn_opt_span (file : string) (line : int) (span : Meta.span option)
     (msg : string) =
   if !Config.warnings_as_errors then craise_opt_span file line span msg
-  else
+  else if not !silent then
     let msg = format_error_message_with_file_line file line span msg in
     log#swarning (msg ^ "\n")
 

@@ -1141,6 +1141,78 @@ let export_trait_impl (fmt : Format.formatter) (_config : gen_config)
     Extract.extract_trait_impl ctx fmt ~is_rec trait_impl;
     EmitJson.record_trait_impl_if_enabled ctx trait_impl)
 
+(** Extract a group of definitions on a page which is wide enough, for Lean.
+
+    [extract] extracts the group to a formatter. In Lean the layout delimits the
+    blocks of code (the instructions of a [do], the branches of a [match]), and
+    the formatter doesn't indent a line beyond its maximum indentation: the
+    lines of a deeply nested definition (for instance a long chain of
+    [if ... else if ...]) are all aligned on this limit, and Lean can't parse
+    them. We thus extract the group to a buffer; if a line reaches the maximum
+    indentation we extract the group again, on a page which is wider (with a
+    bigger margin and a bigger maximum indentation), until no line does. The
+    width of the page only changes the layout: we print the same tokens. *)
+let extract_decl_group_on_wide_enough_page (fmt : Format.formatter)
+    (extract : Format.formatter -> unit) : unit =
+  let margin = Format.pp_get_margin fmt () in
+  let max_indent = Format.pp_get_max_indent fmt () in
+  (* Extract the group on a page which is wider by [extra] columns. If an
+     exception interrupts the extraction, we return it with the text that was
+     extracted before. *)
+  let extract_to_string (extra : int) : string * Errors.cfailure option =
+    let buf = Buffer.create 4096 in
+    let bfmt = Format.formatter_of_buffer buf in
+    Format.pp_set_geometry bfmt ~max_indent:(max_indent + extra)
+      ~margin:(margin + extra);
+    (* The definitions are in a vertical box (see [extract_file]) *)
+    Format.pp_open_vbox bfmt 0;
+    let failure =
+      try
+        extract bfmt;
+        None
+      with CFailure error -> Some error
+    in
+    Format.pp_print_flush bfmt ();
+    (Buffer.contents buf, failure)
+  in
+  let reaches_max_indent (extra : int) (s : string) : bool =
+    List.exists
+      (fun line ->
+        let n = String.length line in
+        let rec indent i =
+          if i < n && line.[i] = ' ' then indent (i + 1) else i
+        in
+        let i = indent 0 in
+        i < n && i >= max_indent + extra)
+      (String.split_on_char '\n' s)
+  in
+  let s, failure = extract_to_string 0 in
+  let s =
+    if failure = None && reaches_max_indent 0 s then (
+      (* Extract the group again: its errors and its warnings were reported by
+         the first extraction, and it was recorded *)
+      let emit_json = !Config.emit_json in
+      Config.emit_json := false;
+      let step = 40 in
+      let rec widen (extra : int) : string =
+        let s, _ = extract_to_string extra in
+        if reaches_max_indent extra s && extra < 100 * step then
+          widen (extra + step)
+        else s
+      in
+      Fun.protect
+        ~finally:(fun () -> Config.emit_json := emit_json)
+        (fun () -> Errors.silently (fun () -> widen step)))
+    else s
+  in
+  (* The text is already laid out: it doesn't count in the current line *)
+  Format.pp_print_as fmt 0 s;
+  (* Raise the exception again; the error was registered when it was raised *)
+  Option.iter
+    (fun (error : Errors.cfailure) ->
+      [%add_loc] Errors.craise_opt_span_silent error.span error.msg)
+    failure
+
 (** A generic utility to generate the extracted definitions: as we may want to
     split the definitions between different files (or not), we can control what
     is precisely extracted. *)
@@ -1151,16 +1223,23 @@ let extract_definitions (fmt : Format.formatter) (config : gen_config)
      - [extract_extra_info]: extra the extra type information (e.g.,
        the [Arguments] information in Coq).
   *)
-  let export_functions_group = export_functions_group fmt config ctx in
-  let export_global = export_global fmt config ctx in
-  let export_types_group = export_types_group fmt config ctx in
+  (* The formatter to which we export the current group of definitions: see
+     the end of the function *)
+  let group_fmt = ref fmt in
+  let export_functions_group x =
+    export_functions_group !group_fmt config ctx x
+  in
+  let export_global x = export_global !group_fmt config ctx x in
+  let export_types_group x y = export_types_group !group_fmt config ctx x y in
   let export_trait_decl_group id =
-    export_trait_decl fmt config ctx id true false
+    export_trait_decl !group_fmt config ctx id true false
   in
   let export_trait_decl_group_extra_info id =
-    export_trait_decl fmt config ctx id false true
+    export_trait_decl !group_fmt config ctx id false true
   in
-  let export_trait_impl ~is_rec = export_trait_impl fmt config ctx ~is_rec in
+  let export_trait_impl ~is_rec x =
+    export_trait_impl !group_fmt config ctx ~is_rec x
+  in
 
   let export_decl_group (dg : declaration_group) : unit =
     match dg with
@@ -1299,6 +1378,17 @@ let extract_definitions (fmt : Format.formatter) (config : gen_config)
     | MixedGroup _ ->
         [%craise_opt_span] None
           "Mixed-recursive declaration groups are not supported"
+  in
+
+  (* For Lean, we extract every group to a buffer first: see
+     [extract_decl_group_on_wide_enough_page] *)
+  let export_decl_group (dg : declaration_group) : unit =
+    match Config.backend () with
+    | Lean ->
+        extract_decl_group_on_wide_enough_page fmt (fun buffer_fmt ->
+            group_fmt := buffer_fmt;
+            export_decl_group dg)
+    | FStar | Coq | HOL4 -> export_decl_group dg
   in
 
   List.iter
