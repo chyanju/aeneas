@@ -26,6 +26,21 @@ let extract_str (_span : Meta.span) (fmt : F.formatter) ~(inside : bool)
   extract_pure_string fmt s;
   if inside then F.pp_print_string fmt ")"
 
+(** Escape a character (of code < 256) so that we can print it between single
+    quotes as a Lean character literal.
+
+    We escape the characters which Lean doesn't read as themselves there: the
+    single quote and the backslash, and the characters above 127, that we would
+    otherwise write as a single byte, which is not valid UTF-8 (Lean reads such
+    a byte as the replacement character U+FFFD). [\xHH] is the character of code
+    [HH] in hexadecimal. The other characters are printed as they are. *)
+let lean_escape_char (c : char) : string =
+  match c with
+  | '\'' -> "\\'"
+  | '\\' -> "\\\\"
+  | '\128' .. '\255' -> Printf.sprintf "\\x%02x" (Char.code c)
+  | _ -> String.make 1 c
+
 (** Format a constant value.
 
     Inputs:
@@ -84,7 +99,8 @@ let extract_literal (span : Meta.span) (fmt : F.formatter) ~(is_pattern : bool)
       | HOL4 ->
           (* [#"a"] is a notation for [CHR 97] (97 is the ASCII code for 'a') *)
           F.pp_print_string fmt ("#\"" ^ String.make 1 c ^ "\"")
-      | FStar | Lean -> F.pp_print_string fmt ("'" ^ String.make 1 c ^ "'")
+      | FStar -> F.pp_print_string fmt ("'" ^ String.make 1 c ^ "'")
+      | Lean -> F.pp_print_string fmt ("'" ^ lean_escape_char c ^ "'")
       | Coq ->
           if inside then F.pp_print_string fmt "(";
           F.pp_print_string fmt "char_of_byte";
