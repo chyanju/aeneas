@@ -58,23 +58,75 @@ let add_type_annotations_to_fun_decl (trans_ctx : trans_ctx)
     { e = Meta (TypeAnnot, e); ty = e.ty }
   in
 
-  let rec visit (ty : ty) (e : texpr) : texpr =
+  (* Small helper: check if a type with holes contains a hole *)
+  let ty_has_holes (ty : ty) : bool =
+    let visitor =
+      object
+        inherit [_] iter_ty
+        method! visit_TVar _ var = if TVar var = hole then raise Utils.Found
+      end
+    in
+    try
+      visitor#visit_ty () ty;
+      false
+    with Utils.Found -> true
+  in
+
+  (* Small helper: check if an expression is a constructor without arguments
+     of a polymorphic type (for instance [none]): nothing in such an expression
+     determines its type. *)
+  let is_polymorphic_constant (e : texpr) : bool =
+    match e.e with
+    | Qualif { id = AdtCons _; generics } -> (
+        generics.types <> []
+        &&
+        match e.ty with
+        | TAdt _ -> true
+        | _ -> false)
+    | _ -> false
+  in
+
+  (* Small helper: check if the body of a lambda is a constructor without
+     arguments of a polymorphic type: nothing in such a lambda determines its
+     type. *)
+  let rec lambda_body_is_polymorphic_constant (e : texpr) : bool =
+    match e.e with
+    | Lambda (_, e) | Meta (_, e) -> lambda_body_is_polymorphic_constant e
+    | _ -> is_polymorphic_constant e
+  in
+
+  (* [let_bound]: [true] if the expression is the bound expression of a
+     let-binding (possibly below a [toResult]): nothing but the expression
+     itself determines its type. *)
+  let rec visit ?(let_bound : bool = false) (ty : ty) (e : texpr) : texpr =
     [%ldebug "visit:\n- ty: " ^ ty_to_string ty ^ "\n- e: " ^ texpr_to_string e];
     match e.e with
     | FVar _ | CVar _ | Const _ | EError _ | Qualif _ -> e
     | BVar _ -> [%internal_error] span
-    | App _ -> visit_App ty e
+    | App _ -> visit_App ~let_bound ty e
     | Lambda (pat, e') ->
-        (* Decompose the type *)
-        let ty' =
-          match ty with
-          | TArrow (_, ty) -> ty
-          | _ -> hole
-        in
-        { e with e = Lambda (pat, visit ty' e') }
+        if
+          Config.backend () = Lean
+          && ty_has_holes ty
+          && lambda_body_is_polymorphic_constant e'
+        then
+          (* The type of the lambda is not known from the context, and its
+             body doesn't determine it (the bound variables are not used, and
+             the body is polymorphic): Lean can't elaborate [fun x => none]
+             there. We annotate the lambda with its type, which is then
+             known. *)
+          mk_type_annot { e with e = Lambda (pat, visit e'.ty e') }
+        else
+          (* Decompose the type *)
+          let ty' =
+            match ty with
+            | TArrow (_, ty) -> ty
+            | _ -> hole
+          in
+          { e with e = Lambda (pat, visit ty' e') }
     | Let (monadic, pat, bound, next) ->
         (* The type of the bound expression is considered as unknown *)
-        let bound = visit hole bound in
+        let bound = visit ~let_bound:true hole bound in
         let next = visit ty next in
         { e with e = Let (monadic, pat, bound, next) }
     | Switch (discr, body) ->
@@ -149,7 +201,7 @@ let add_type_annotations_to_fun_decl (trans_ctx : trans_ctx)
     | Meta (meta, e') ->
         let ty = if meta = TypeAnnot then e'.ty else ty in
         { e with e = Meta (meta, visit ty e') }
-  and visit_App (ty : ty) (e : texpr) : texpr =
+  and visit_App ~(let_bound : bool) (ty : ty) (e : texpr) : texpr =
     [%ldebug
       "visit_App:\n- ty: " ^ ty_to_string ty ^ "\n- e: " ^ texpr_to_string e];
     (* Deconstruct the app *)
@@ -172,6 +224,10 @@ let add_type_annotations_to_fun_decl (trans_ctx : trans_ctx)
       in
       compute_known_tys ty args
     in
+    (* If the function comes from LLBC: its output type, where the implicit
+       type variables that its trait instances don't determine are holes (see
+       below). *)
+    let llbc_fun_output : ty option ref = ref None in
     (* evaluate to: (function type, arguments types, needs annotations) *)
     let compute_known_tys_from_fun_id (qualif : qualif) (fid : fun_id) :
         ty * ty list * bool =
@@ -291,6 +347,7 @@ let add_type_annotations_to_fun_decl (trans_ctx : trans_ctx)
             make_subst_from_generics_for_trait sg.generics tr_self generics
           in
           let sg = fun_sig_substitute subst sg in
+          llbc_fun_output := Some sg.output;
           (known_f_ty, sg.inputs, false)
         end
     in
@@ -374,8 +431,46 @@ let add_type_annotations_to_fun_decl (trans_ctx : trans_ctx)
     let num_args = List.length args in
     [%sanity_check] span (num_args <= List.length args_tys);
     let args_tys = Collections.List.prefix num_args args_tys in
+    (* The bound expression of a let-binding may be below a [toResult] *)
+    let let_bound_arg =
+      let_bound
+      &&
+      match f.e with
+      | Qualif { id = FunOrOp (Fun (Pure (Return | ToResult))); _ } -> true
+      | _ -> false
+    in
     let args =
-      List.map (fun (ty, arg) -> visit ty arg) (List.combine args_tys args)
+      List.map
+        (fun (ty, arg) -> visit ~let_bound:let_bound_arg ty arg)
+        (List.combine args_tys args)
+    in
+    (* The type of an argument which is a constructor without arguments of a
+       polymorphic type (for instance [none]) is not known if it mentions
+       implicit type variables of the function that nothing else determines:
+       no other argument does (the arguments whose types mention such
+       variables are all constructors of this kind), and neither does the
+       type of the result (it doesn't mention such variables, or it is itself
+       unknown because the call is the bound expression of a let-binding).
+       Lean can't elaborate such a call (for instance [Option.is_some none]):
+       we annotate these arguments with their types. *)
+    let args =
+      match !llbc_fun_output with
+      | Some output
+        when Config.backend () = Lean && (let_bound || not (ty_has_holes output))
+        ->
+          let args = List.combine args_tys args in
+          let unknown = List.filter (fun (ty, _) -> ty_has_holes ty) args in
+          let annot =
+            unknown <> []
+            && List.for_all
+                 (fun (_, arg) -> is_polymorphic_constant arg)
+                 unknown
+          in
+          List.map
+            (fun (ty, arg) ->
+              if annot && ty_has_holes ty then mk_type_annot arg else arg)
+            args
+      | _ -> args
     in
     let f = visit f_ty f in
     let e = [%add_loc] mk_apps span f args in

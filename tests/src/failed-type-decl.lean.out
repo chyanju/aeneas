@@ -49,7 +49,7 @@ Compiler source: pure/PureTypeCheck.ml, line 26
 Name pattern: 'failed_type_decl::struct_update'.
  We will generate code without annotations but it may not type-check.
 Source: 'tests/src/failed-type-decl.rs', lines 33:0-35:1
-Compiler source: pure/PureMicroPassesAnnots.ml, line 442
+Compiler source: pure/PureMicroPassesAnnots.ml, line 537
 
 [[91mError[39m] Unknown type declaration (id 8): the translation of this type probably failed because of a previous error
 Source: 'tests/src/failed-type-decl.rs', lines 38:0-40:1
@@ -58,7 +58,7 @@ Compiler source: pure/PureTypeCheck.ml, line 26
 Name pattern: 'failed_type_decl::constructor'.
  We will generate code without annotations but it may not type-check.
 Source: 'tests/src/failed-type-decl.rs', lines 38:0-40:1
-Compiler source: pure/PureMicroPassesAnnots.ml, line 442
+Compiler source: pure/PureMicroPassesAnnots.ml, line 537
 
 [[91mError[39m] Could not find: type name: failed_type_decl::W
 Source: 'tests/src/failed-type-decl.rs', lines 28:0-30:1
