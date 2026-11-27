@@ -11,11 +11,11 @@ Compiler source: Translate.ml, line 420
 Trait declaration: trait_method_sig_failure::Tr
 Source: Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
 Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
-Compiler source: symbolic/SymbolicToPure.ml, line 254
+Compiler source: symbolic/SymbolicToPure.ml, line 268
 
 [[91mError[39m] Can not extract trait associated types with parameters
 Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
-Compiler source: symbolic/SymbolicToPure.ml, line 266
+Compiler source: symbolic/SymbolicToPure.ml, line 280
 [[93mWarn[39m ] Could not translate the trait declaration 'trait_method_sig_failure::Tr because of previous error
 Name pattern: 'trait_method_sig_failure::Tr'
 Definition span: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1

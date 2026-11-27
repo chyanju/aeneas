@@ -10,7 +10,19 @@ Compiler source: Translate.ml, line 420
 [[91mError[39m] Could not find the signature of the trait method 'bad': it was not translated, because of a previous error or because the trait is builtin and its model does not define this method
 Source: 'tests/src/trait-method-sig-dropped.rs', lines 41:0-43:1
 Compiler source: symbolic/SymbolicToPureTypes.ml, line 1247
+[[93mWarn[39m ] Could not translate the body of function 'trait_method_sig_dropped::call_bad because of previous error: the function is extracted without its body, like an opaque function
+Name pattern: 'trait_method_sig_dropped::call_bad'
+Definition span: 'tests/src/trait-method-sig-dropped.rs', lines 41:0-43:1
+Source: 'tests/src/trait-method-sig-dropped.rs', lines 41:0-43:1
+Compiler source: symbolic/SymbolicToPure.ml, line 103
+
 [[91mError[39m] Could not find the signature of the trait method 'count': it was not translated, because of a previous error or because the trait is builtin and its model does not define this method
 Source: 'tests/src/trait-method-sig-dropped.rs', lines 49:0-51:1
 Compiler source: symbolic/SymbolicToPureTypes.ml, line 1247
+[[93mWarn[39m ] Could not translate the body of function 'trait_method_sig_dropped::generic_count because of previous error: the function is extracted without its body, like an opaque function
+Name pattern: 'trait_method_sig_dropped::generic_count'
+Definition span: 'tests/src/trait-method-sig-dropped.rs', lines 49:0-51:1
+Source: 'tests/src/trait-method-sig-dropped.rs', lines 49:0-51:1
+Compiler source: symbolic/SymbolicToPure.ml, line 103
+
 [[92mInfo[39m ] Generated the partial file (because of 3 errors, including 2 unique errors): tests/llbc/lean/TraitMethodSigDropped.lean

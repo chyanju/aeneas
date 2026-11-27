@@ -88,10 +88,24 @@ let translate_fun_decl (ctx : bs_ctx) (body : S.expr option) : fun_decl =
     | None -> None
     | Some body -> (
         try Some (translate_fun_decl_body ctx signature body)
-        with CFailure _ ->
+        with CFailure error ->
           (* We could not translate the body because of an error (note that we do
            not need to rethrow the error as it was already registered and will
-           be showed to the user) *)
+           be showed to the user). The function has no body anymore: we warn
+           the user, as it is then extracted like an opaque function. *)
+          let name_pattern =
+            try
+              TranslateCore.name_to_pattern_string (Some def.item_meta.span)
+                ctx.decls_ctx def.item_meta.name
+            with CFailure _ ->
+              "(could not compute the name pattern due to a different error)"
+          in
+          [%warn_opt_span] error.span
+            ("Could not translate the body of function '" ^ name
+           ^ " because of previous error: the function is extracted without \
+              its body, like an opaque function\n\
+              Name pattern: '" ^ name_pattern ^ "'" ^ "\nDefinition span: "
+            ^ Errors.raw_span_to_string def.item_meta.span);
           None)
   in
 

@@ -1,0 +1,10 @@
+[[91mError[39m] Unimplemented
+Source: 'tests/src/dropped-fun-body.rs', lines 17:0-25:1
+Compiler source: symbolic/SymbolicToPureTypes.ml, line 470
+[[93mWarn[39m ] Could not translate the body of function 'dropped_fun_body::as_mut_of_none because of previous error: the function is extracted without its body, like an opaque function
+Name pattern: 'dropped_fun_body::as_mut_of_none'
+Definition span: 'tests/src/dropped-fun-body.rs', lines 17:0-25:1
+Source: 'tests/src/dropped-fun-body.rs', lines 17:0-25:1
+Compiler source: symbolic/SymbolicToPure.ml, line 103
+
+[[92mInfo[39m ] Generated the partial file (because of 1 errors, including 1 unique errors): tests/llbc/lean/DroppedFunBody.lean
