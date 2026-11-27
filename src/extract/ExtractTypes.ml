@@ -66,6 +66,34 @@ let extract_literal (span : Meta.span) (fmt : F.formatter) ~(is_pattern : bool)
           | _ -> [%admit_raise] span "Unreachable" fmt);
           (* We need to add parentheses if the value is negative *)
           let sv_value = Scalars.get_val sv in
+          (* In a Lean pattern, [x#iscalar] stands for [IScalar.mk x] where [x]
+             is a bit-vector, and Lean can only compile a [match] whose
+             patterns of this kind are all bit-vector literals: we write a
+             negative value [v] of an integer type of [n] bits as the literal
+             of its two's complement, [2^n + v] (the bit-vector of the scalar
+             of value [v] is [BitVec.ofInt n v], that is the literal
+             [2^n + v]). The number of bits of [isize] is not known: we don't
+             match over its values (see
+             {!PureMicroPassesGeneral.update_match_over_isize_usize}). *)
+          let sv_value =
+            let num_bits : Values.int_ty -> int option = function
+              | I8 -> Some 8
+              | I16 -> Some 16
+              | I32 -> Some 32
+              | I64 -> Some 64
+              | I128 -> Some 128
+              | Isize -> None
+            in
+            match (backend (), Scalars.get_ty sv) with
+            | Lean, Signed ty when is_pattern && Z.sign sv_value < 0 -> (
+                match num_bits ty with
+                | Some n ->
+                    [%sanity_check] span
+                      (Z.geq sv_value (Z.neg (Z.shift_left Z.one (n - 1))));
+                    Z.add (Z.shift_left Z.one n) sv_value
+                | None -> sv_value)
+            | _ -> sv_value
+          in
           if sv_value >= Z.of_int 0 then
             F.pp_print_string fmt (Z.to_string sv_value)
           else F.pp_print_string fmt ("(" ^ Z.to_string sv_value ^ ")");
