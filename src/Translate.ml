@@ -684,6 +684,61 @@ let crate_has_opaque_non_builtin_decls (ctx : gen_ctx) (filter_builtin : bool) :
            funs)];
   (types <> [], funs <> [])
 
+(** For Lean: the context in which we extract a group of declarations, given
+    their names (see {!ExtractBase.lean_scope_of_group}) *)
+let lean_group_ctx (ctx : gen_ctx) (names : string list) ~(mutual : bool) :
+    gen_ctx =
+  if Config.backend () = Lean then
+    {
+      ctx with
+      lean_scope = Some (ExtractBase.lean_scope_of_group names ~mutual);
+    }
+  else ctx
+
+(** For Lean: register the names of the declarations that we just extracted, in
+    the namespace of the crate (see {!ExtractBase.lean_declared}) *)
+let lean_register_declared (names : string list) : unit =
+  if Config.backend () = Lean && !ExtractBase.lean_check_names then
+    ExtractBase.lean_declared :=
+      List.fold_left
+        (fun names name -> ExtractBase.StringSet.add name names)
+        !ExtractBase.lean_declared names
+
+(** For Lean: the names of the declarations that the extraction of a type
+    declaration introduces: the type, its constructors and its projections *)
+let lean_type_decl_names (ctx : gen_ctx) (def : Pure.type_decl) : string list =
+  match
+    ExtractBase.ctx_find_raw (ExtractBase.TypeId (Pure.TAdtId def.def_id)) ctx
+  with
+  | None -> []
+  | Some name -> (
+      let is_tuple_struct =
+        TypesUtils.type_decl_from_decl_id_is_tuple_struct
+          ctx.trans_ctx.type_ctx.type_infos def.def_id
+      in
+      if is_tuple_struct then [ name ]
+      else
+        match def.kind with
+        | Struct fields ->
+            name :: (name ^ ".mk")
+            :: List.filter_map
+                 (fun fid ->
+                   Option.map
+                     (fun field -> name ^ "." ^ field)
+                     (ExtractBase.ctx_find_raw
+                        (ExtractBase.FieldId (Pure.TAdtId def.def_id, fid))
+                        ctx))
+                 (FieldId.mapi (fun fid _ -> fid) fields)
+        | Enum variants ->
+            name
+            :: List.filter_map
+                 (fun vid ->
+                   ExtractBase.ctx_find_raw
+                     (ExtractBase.VariantId (Pure.TAdtId def.def_id, vid))
+                     ctx)
+                 (VariantId.mapi (fun vid _ -> vid) variants)
+        | Opaque -> [ name ])
+
 (** Export a type declaration.
 
     It may happen that we have to extract extra information/instructions. For
@@ -729,10 +784,10 @@ let export_type (fmt : Format.formatter) (config : gen_config) (ctx : gen_ctx)
 let export_types_group (fmt : Format.formatter) (config : gen_config)
     (ctx : gen_ctx) (is_rec : bool) (ids : Pure.TypeDeclId.id list) : unit =
   assert (ids <> []);
-  let export_type = export_type fmt config ctx in
   let ids_set = Pure.TypeDeclId.TreeSet.of_list ids in
-  let export_type_decl kind id = export_type ids_set kind id true false in
-  let export_type_extra_info kind id = export_type ids_set kind id false true in
+  let export_type_extra_info kind id =
+    export_type fmt config ctx ids_set kind id false true
+  in
 
   (* Rem.: we shouldn't have (mutually) recursive opaque types *)
   let num_decls = List.length ids in
@@ -807,12 +862,23 @@ let export_types_group (fmt : Format.formatter) (config : gen_config)
        ]}
     *)
     Extract.start_type_decl_group ctx fmt is_rec defs;
+    (* For Lean: the scope of the declarations of the group *)
+    let ctx_decls =
+      lean_group_ctx ctx
+        (List.filter_map
+           (fun (d : Pure.type_decl) ->
+             ExtractBase.ctx_find_raw
+               (ExtractBase.TypeId (Pure.TAdtId d.def_id)) ctx)
+           defs)
+        ~mutual:(is_rec && List.length defs > 1)
+    in
     List.iteri
       (fun i def ->
         let kind = kind_from_index i in
-        export_type_decl kind def)
+        export_type fmt config ctx_decls ids_set kind def true false)
       defs;
     Extract.end_type_decl_group fmt is_rec defs;
+    lean_register_declared (List.concat_map (lean_type_decl_names ctx) defs);
 
     (* Export the extra information (ex.: [Arguments] instructions in Coq) *)
     List.iteri
@@ -868,6 +934,17 @@ let export_functions_group_scc (fmt : Format.formatter) (config : gen_config)
      TODO: in practice splitting the code this way doesn't work so well: merge
      the start/end decl group functions with the extract_fun_decl function?
   *)
+  (* For Lean: the names of the declarations of the group, and its scope *)
+  let names =
+    List.filter_map
+      (fun (def : Pure.fun_decl) ->
+        ExtractBase.ctx_find_raw
+          (ExtractBase.FunId
+             (Pure.FromLlbc (Pure.FunId def.def_id, def.loop_id)))
+          ctx)
+      decls
+  in
+  let ctx_decls = lean_group_ctx ctx names ~mutual:is_mut_rec in
   (* Filter the definitions - we generate a list of continuations *)
   let extract_defs =
     List.mapi
@@ -900,7 +977,7 @@ let export_functions_group_scc (fmt : Format.formatter) (config : gen_config)
         then
           Some
             (fun () ->
-              Extract.extract_fun_decl ctx fmt kind has_decr_clause def;
+              Extract.extract_fun_decl ctx_decls fmt kind has_decr_clause def;
               EmitJson.record_fun_if_enabled ctx def)
         else None)
       decls
@@ -915,7 +992,8 @@ let export_functions_group_scc (fmt : Format.formatter) (config : gen_config)
 
     Extract.start_fun_decl_group ctx fmt is_rec decls;
     List.iter (fun f -> f ()) extract_defs;
-    Extract.end_fun_decl_group fmt is_rec decls)
+    Extract.end_fun_decl_group fmt is_rec decls;
+    lean_register_declared names)
 
 (** Extract the decreases-clause template bodies for a list of function
     declarations (typically a function together with the loops it contains).
@@ -1068,7 +1146,13 @@ let export_global (fmt : Format.formatter) (config : gen_config) (ctx : gen_ctx)
     export_fun_decls_scc fmt config ctx (trans.loops @ trans.bodies);
 
     let pure_global = GlobalDeclId.Map.find_opt id ctx.trans_globals in
-    Extract.extract_global_decl ctx fmt pure_global body config.interface;
+    let names =
+      Option.to_list (ExtractBase.ctx_find_raw (ExtractBase.GlobalId id) ctx)
+    in
+    Extract.extract_global_decl
+      (lean_group_ctx ctx names ~mutual:false)
+      fmt pure_global body config.interface;
+    lean_register_declared names;
     Option.iter (EmitJson.record_global_if_enabled ctx) pure_global)
 
 (** Lookup a translated trait declaration. The declaration is missing if its
@@ -1122,7 +1206,45 @@ let export_trait_decl (fmt : Format.formatter) (_config : gen_config)
   if not (trait_decl_is_builtin ctx trait_decl_id) then (
     let ctx = { ctx with trait_decl_id = Some trait_decl.def_id } in
     if extract_decl then (
-      Extract.extract_trait_decl ctx fmt trait_decl;
+      let names =
+        Option.to_list
+          (ExtractBase.ctx_find_raw (ExtractBase.TraitDeclId trait_decl.def_id)
+             ctx)
+      in
+      Extract.extract_trait_decl
+        (lean_group_ctx ctx names ~mutual:false)
+        fmt trait_decl;
+      (* The structure of the trait, its constructor and its projections *)
+      let item_names =
+        List.map
+          (fun (const_id, _, _) ->
+            ExtractBase.TraitConstId (trait_decl.def_id, const_id))
+          trait_decl.consts
+        @ List.map
+            (fun (type_id, _) ->
+              ExtractBase.TraitTypeId (trait_decl.def_id, type_id))
+            trait_decl.types
+        @ List.map
+            (fun (clause : Pure.trait_param) ->
+              ExtractBase.TraitParentClauseId
+                (trait_decl.def_id, clause.clause_id))
+            trait_decl.parent_clauses
+        @ List.map
+            (fun (meth : Pure.trait_method) ->
+              ExtractBase.TraitMethodId (trait_decl.def_id, meth.method_id))
+            trait_decl.methods
+      in
+      List.iter
+        (fun name ->
+          lean_register_declared
+            (name :: (name ^ ".mk")
+            :: List.filter_map
+                 (fun id ->
+                   Option.map
+                     (fun item -> name ^ "." ^ item)
+                     (ExtractBase.ctx_find_raw id ctx))
+                 item_names))
+        names;
       EmitJson.record_trait_decl_if_enabled ctx trait_decl);
     if extract_extra_info then
       Extract.extract_trait_decl_extra_info ctx fmt trait_decl)
@@ -1138,7 +1260,18 @@ let export_trait_impl (fmt : Format.formatter) (_config : gen_config)
       (TraitImplId.Map.find_opt trait_impl_id ctx.trans_trait_impls)
   in
   if not (trait_impl_is_builtin ctx trait_impl_id) then (
-    Extract.extract_trait_impl ctx fmt ~is_rec trait_impl;
+    let names =
+      Option.to_list
+        (ExtractBase.ctx_find_raw (ExtractBase.TraitImplId trait_impl.def_id)
+           ctx)
+    in
+    (* A recursive implementation is extracted with the command [impl_def] of
+       the Aeneas library: we don't model its scope *)
+    let ctx_decl =
+      if is_rec then ctx else lean_group_ctx ctx names ~mutual:false
+    in
+    Extract.extract_trait_impl ctx_decl fmt ~is_rec trait_impl;
+    lean_register_declared names;
     EmitJson.record_trait_impl_if_enabled ctx trait_impl)
 
 (** Extract a group of definitions for Lean.
@@ -1163,6 +1296,9 @@ let extract_decl_group_for_lean (fmt : Format.formatter) (ctx : gen_ctx)
   let open ExtractBase in
   let margin = Format.pp_get_margin fmt () in
   let max_indent = Format.pp_get_max_indent fmt () in
+  (* The declarations which come before the group: each extraction of the
+     group registers its declarations (see {!lean_register_declared}) *)
+  let declared = !lean_declared in
   (* Extract the group on a page which is wider by [extra] columns. We return
      the text, the exception which interrupted the extraction if there is one
      (the text is then what was extracted before), and the local variables
@@ -1176,6 +1312,7 @@ let extract_decl_group_for_lean (fmt : Format.formatter) (ctx : gen_ctx)
     (* The definitions are in a vertical box (see [extract_file]) *)
     Format.pp_open_vbox bfmt 0;
     shadowing_vars := StringSet.empty;
+    lean_declared := declared;
     let failure =
       try
         extract ctx bfmt;
@@ -1591,8 +1728,12 @@ let extract_file (config : gen_config) (ctx : gen_ctx) (fi : extract_file_info)
   (* Create a vertical box *)
   Format.pp_open_vbox fmt 0;
 
-  (* Extract the definitions *)
-  extract_definitions fmt config ctx;
+  (* Extract the definitions. For Lean, we check the names that we print in
+     the declarations in the namespace of the crate *)
+  ExtractBase.lean_check_names := fi.in_namespace;
+  Fun.protect
+    ~finally:(fun () -> ExtractBase.lean_check_names := false)
+    (fun () -> extract_definitions fmt config ctx);
 
   (* Close the box and end the formatting *)
   Format.pp_close_box fmt ();
@@ -1698,6 +1839,7 @@ let extract_translated_crate (filename : string) (dest_dir : string)
         Config.backend () = Lean && !Config.extract_decreases_clauses;
       trait_decl_id = None (* None by default *);
       scoped_vars = ExtractBase.StringSet.empty;
+      lean_scope = None;
       trans_trait_decls;
       trans_trait_impls;
       trans_types;
@@ -1931,6 +2073,8 @@ let extract_translated_crate (filename : string) (dest_dir : string)
         (* Concatenate *)
         (namespace, crate_name, full_dest_dir, filebasename)
   in
+  ExtractBase.lean_namespace := namespace;
+  ExtractBase.lean_declared := ExtractBase.StringSet.empty;
   [%ltrace
     "namespace: " ^ namespace ^ "\n- crate_name: " ^ crate_name
     ^ "\n- full_dest_dir: " ^ full_dest_dir ^ "\n- extract_filebasename: "

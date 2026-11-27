@@ -2112,9 +2112,10 @@ let extract_fun_comment (ctx : extraction_ctx) (fmt : F.formatter)
 let extract_fun_decl_gen (ctx : extraction_ctx) (fmt : F.formatter)
     (kind : decl_kind) (has_decreases_clause : bool) (def : fun_decl) : unit =
   [%sanity_check] def.item_meta.span (not def.is_global_decl_body);
-  (* Retrieve the function name *)
+  (* Retrieve the function name (the scope of the declaration starts after it) *)
   let def_name =
-    ctx_get_local_function def.item_meta.span def.def_id def.loop_id ctx
+    ctx_get_local_function def.item_meta.span def.def_id def.loop_id
+      { ctx with lean_scope = None }
   in
   [%ltrace "Extracting function: " ^ def_name];
   (* Open the binders - it is easier to only manipulate variables which have unique ids *)
@@ -2688,7 +2689,9 @@ let extract_global_decl_aux (ctx : extraction_ctx) (fmt : F.formatter)
     name ~public:global.item_meta.attr_info.public global.span;
   F.pp_print_space fmt ();
 
-  let decl_name = ctx_get_global span global.def_id ctx in
+  let decl_name =
+    ctx_get_global span global.def_id { ctx with lean_scope = None }
+  in
   let output_ty = body.signature.output in
   (* Add the type parameters *)
   let ctx, type_params, cg_params, trait_clauses =
@@ -3118,8 +3121,11 @@ let extract_trait_decl_method_items (ctx : extraction_ctx) (fmt : F.formatter)
 (** Extract a trait declaration *)
 let extract_trait_decl (ctx : extraction_ctx) (fmt : F.formatter)
     (decl : trait_decl) : unit =
-  (* Retrieve the trait name *)
-  let decl_name = ctx_get_trait_decl decl.item_meta.span decl.def_id ctx in
+  (* Retrieve the trait name (the scope of the declaration starts after it) *)
+  let decl_name =
+    ctx_get_trait_decl decl.item_meta.span decl.def_id
+      { ctx with lean_scope = None }
+  in
   (* Add a break before *)
   F.pp_print_break fmt 0 0;
   (* Print a comment to link the extracted type to its original rust definition *)
@@ -3270,56 +3276,77 @@ let extract_trait_decl (ctx : extraction_ctx) (fmt : F.formatter)
      * Extract the items
      *)
 
+    (* In Lean, the items are the fields of a structure: each one is in scope
+       in the types of the items which follow *)
+    let add_item (id : id) (ctx : extraction_ctx) : extraction_ctx =
+      match ctx_find_raw id ctx with
+      | Some name -> ctx_lean_scope_add_field name ctx
+      | None -> ctx
+    in
+
     (* The constants *)
-    List.iter
-      (fun (const_id, _, ty) ->
-        let item_name =
-          ctx_get_trait_const decl.item_meta.span decl.def_id const_id ctx
-        in
-        let ty () =
-          let inside = false in
-          F.pp_print_space fmt ();
-          let ty = mk_result_ty ty in
-          extract_ty decl.item_meta.span ctx fmt TypeDeclId.TreeSet.empty
-            ~inside ty
-        in
-        extract_trait_decl_item ctx fmt item_name ty)
-      decl.consts;
+    let ctx =
+      List.fold_left
+        (fun ctx (const_id, _, ty) ->
+          let item_name =
+            ctx_get_trait_const decl.item_meta.span decl.def_id const_id ctx
+          in
+          let ty () =
+            let inside = false in
+            F.pp_print_space fmt ();
+            let ty = mk_result_ty ty in
+            extract_ty decl.item_meta.span ctx fmt TypeDeclId.TreeSet.empty
+              ~inside ty
+          in
+          extract_trait_decl_item ctx fmt item_name ty;
+          add_item (TraitConstId (decl.def_id, const_id)) ctx)
+        ctx decl.consts
+    in
 
     (* The types *)
-    List.iter
-      (fun (type_id, _) ->
-        (* Extract the type *)
-        let item_name =
-          ctx_get_trait_type decl.item_meta.span decl.def_id type_id ctx
-        in
-        let ty () =
-          F.pp_print_space fmt ();
-          F.pp_print_string fmt (type_keyword ~poly:false decl.item_meta.span)
-        in
-        extract_trait_decl_item ctx fmt item_name ty)
-      decl.types;
+    let ctx =
+      List.fold_left
+        (fun ctx (type_id, _) ->
+          (* Extract the type *)
+          let item_name =
+            ctx_get_trait_type decl.item_meta.span decl.def_id type_id ctx
+          in
+          let ty () =
+            F.pp_print_space fmt ();
+            F.pp_print_string fmt (type_keyword ~poly:false decl.item_meta.span)
+          in
+          extract_trait_decl_item ctx fmt item_name ty;
+          add_item (TraitTypeId (decl.def_id, type_id)) ctx)
+        ctx decl.types
+    in
 
     (* The parent clauses - note that the parent clauses may refer to the types
        and const generics: for this reason we extract them *after* *)
-    List.iter
-      (fun clause ->
-        let item_name =
-          ctx_get_trait_parent_clause decl.item_meta.span decl.def_id
-            clause.clause_id ctx
-        in
-        let ty () =
-          F.pp_print_space fmt ();
-          extract_trait_clause_type decl.item_meta.span ctx fmt
-            TypeDeclId.TreeSet.empty clause
-        in
-        extract_trait_decl_item ctx fmt item_name ty)
-      decl.parent_clauses;
+    let ctx =
+      List.fold_left
+        (fun ctx clause ->
+          let item_name =
+            ctx_get_trait_parent_clause decl.item_meta.span decl.def_id
+              clause.clause_id ctx
+          in
+          let ty () =
+            F.pp_print_space fmt ();
+            extract_trait_clause_type decl.item_meta.span ctx fmt
+              TypeDeclId.TreeSet.empty clause
+          in
+          extract_trait_decl_item ctx fmt item_name ty;
+          add_item (TraitParentClauseId (decl.def_id, clause.clause_id)) ctx)
+        ctx decl.parent_clauses
+    in
 
     (* The methods *)
-    List.iter
-      (fun meth -> extract_trait_decl_method_items ctx fmt decl meth)
-      decl.methods;
+    let _ =
+      List.fold_left
+        (fun ctx meth ->
+          extract_trait_decl_method_items ctx fmt decl meth;
+          add_item (TraitMethodId (decl.def_id, meth.method_id)) ctx)
+        ctx decl.methods
+    in
 
     (* Close the outer boxes for the definition *)
     if backend () <> Lean then F.pp_close_box fmt ();
@@ -3490,8 +3517,10 @@ let extract_trait_impl (ctx : extraction_ctx) (fmt : F.formatter)
         in
         { impl with methods = List.filter is_decl_method impl.methods }
   in
-  (* Retrieve the impl name *)
-  let impl_name = ctx_get_trait_impl span impl.def_id ctx in
+  (* Retrieve the impl name (the scope of the declaration starts after it) *)
+  let impl_name =
+    ctx_get_trait_impl span impl.def_id { ctx with lean_scope = None }
+  in
   (* Add a break before *)
   F.pp_print_break fmt 0 0;
   (* Print a comment to link the extracted type to its original rust definition *)

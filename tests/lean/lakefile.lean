@@ -115,6 +115,7 @@ package «tests» {}
 @[default_target] lean_lib Results
 @[default_target] lean_lib RustBorrowCheckIssues
 @[default_target] lean_lib Scalars
+@[default_target] lean_lib ShadowedNames
 @[default_target] lean_lib ShadowedNamespaces
 @[default_target] lean_lib Slices
 @[default_target] lean_lib Static

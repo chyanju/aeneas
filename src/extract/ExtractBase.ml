@@ -570,6 +570,31 @@ let scalar_name (ty : literal_type) : string =
       | FStar | Coq | HOL4 -> "string"
       | Lean -> "String")
 
+(** For Lean: what is in scope, besides the local variables, at the point of a
+    declaration that we extract, and can capture a name that we print.
+
+    Lean elaborates the declaration [def A.B.f] in the namespace [A.B], in the
+    namespace of the crate: there an identifier [x] is the declaration [A.B.x]
+    or [A.x] of the crate if there is one, before it is the declaration [x] of
+    the crate, of the root namespace or of an open namespace. The declarations
+    being defined are in the local context: in the declaration of [A.B.f], [f]
+    is the function [A.B.f], whatever the other declarations named [f] are. In a
+    [structure], the fields declared before a field are in the local context of
+    its type. See {!lean_name_is_captured}. *)
+type lean_scope = {
+  namespaces : string list;
+      (** The namespace in which Lean elaborates the declaration and its
+          prefixes, relative to the namespace of the crate and without it, the
+          innermost first: [["A.B"; "A"]] for [def A.B.f]. *)
+  aux_decls : (string * string) list;
+      (** The declarations being defined: for each one, the name of its local
+          declaration (the name of the declaration without the namespace in
+          which Lean elaborates it) and its name. *)
+  fields : StringSet.t;
+      (** The fields of the structure being defined which are declared before
+          the field that we extract. *)
+}
+
 (** Extraction context.
 
     Note that the extraction context contains information coming from the LLBC
@@ -599,6 +624,10 @@ type extraction_ctx = {
           type, nor in the expression that it is bound to: we add its name to
           this set after we extracted them, while we add it to the names map as
           soon as we extract its binder. See {!shadowing_vars}. *)
+  lean_scope : lean_scope option;
+      (** For Lean: the scope of the declaration that we extract, if we print
+          the names that it captures from the root namespace. We set it after we
+          printed the name of the declaration. See {!lean_print_name}. *)
   trans_types : Pure.type_decl Pure.TypeDeclId.Map.t;
   trans_funs : pure_fun_translation A.FunDeclId.Map.t;
   trans_globals : Pure.global_decl Pure.GlobalDeclId.Map.t;
@@ -814,6 +843,13 @@ let ctx_get_raw (span : Meta.span option) (id : id) (ctx : extraction_ctx) :
   let id_to_string (id : id) : string = id_to_string span id ctx in
   names_maps_get span id_to_string id ctx.names_maps
 
+(** Retrieve a name from the names maps, unescaped, if it is there. Contrary to
+    {!ctx_get_raw}, this doesn't report an error if the name is missing. *)
+let ctx_find_raw (id : id) (ctx : extraction_ctx) : string option =
+  if allow_collisions id then
+    IdMap.find_opt id ctx.names_maps.unsafe_names_map.id_to_name
+  else IdMap.find_opt id ctx.names_maps.names_map.id_to_name
+
 (** For Lean: the names of the local variables which shadow a namespace.
 
     In [x.y.z], Lean reads [x] as a local variable if there is one in scope: a
@@ -850,6 +886,137 @@ let id_is_decl (id : id) : bool =
   | TraitParentClauseId _
   | KeywordId -> false
 
+(** For Lean: the namespace of the declarations of the crate *)
+let lean_namespace : string ref = ref ""
+
+(** For Lean: [true] while we extract a file whose declarations are in the
+    namespace of the crate. In the template files, which are outside of this
+    namespace, we print the names as they are. *)
+let lean_check_names : bool ref = ref false
+
+(** For Lean: the names, relative to the namespace of the crate, of the
+    declarations of the crate which come before the point of the extraction: the
+    types with their constructors and their projections, the functions, the
+    constants, the traits with their constructors and their projections, and the
+    trait implementations. *)
+let lean_declared : StringSet.t ref = ref StringSet.empty
+
+(** For Lean: the full names of the declarations of the Lean library whose names
+    we print relative to the root namespace or to an open namespace
+    ([open Aeneas Aeneas.Std Result ControlFlow Error]). We use them to print a
+    captured name from the root namespace (see {!lean_print_name}); the test
+    [tests/lean/ShadowedNames/Properties.lean] checks that each one is the
+    declaration of the name. *)
+let lean_library_full_names : string StringMap.t Lazy.t =
+  lazy
+    (StringMap.of_list
+       ([
+          ("Bool", "Bool");
+          ("Char", "Char");
+          ("Unit", "Unit");
+          ("Nat", "Nat");
+          ("String", "String");
+          ("Option", "Option");
+          ("none", "Option.none");
+          ("some", "Option.some");
+          ("Result", "Aeneas.Std.Result");
+          ("ok", "Aeneas.Std.Result.ok");
+          ("fail", "Aeneas.Std.Result.fail");
+          ("panic", "Aeneas.Std.Error.panic");
+          ("ControlFlow", "Aeneas.Std.ControlFlow");
+          ("cont", "Aeneas.Std.ControlFlow.cont");
+          ("done", "Aeneas.Std.ControlFlow.done");
+          ("Array", "Aeneas.Std.Array");
+          ("Slice", "Aeneas.Std.Slice");
+          ("Str", "Aeneas.Std.Str");
+          ("MutRawPtr", "Aeneas.Std.MutRawPtr");
+          ("ConstRawPtr", "Aeneas.Std.ConstRawPtr");
+          ("Never", "Aeneas.Std.Never");
+          ("massert", "Aeneas.Std.massert");
+          ("lift", "Aeneas.Std.lift");
+          ("read_discriminant", "Aeneas.Std.Discriminant.read_discriminant");
+        ]
+       @ List.map
+           (fun ty ->
+             let name = int_name ty in
+             ("Std." ^ name, "Aeneas.Std." ^ name))
+           T.all_int_types))
+
+(** [true] if the dot-separated name [name] ends with the components of [suffix]
+*)
+let name_has_suffix (suffix : string) (name : string) : bool =
+  name = suffix || String.ends_with ~suffix:("." ^ suffix) name
+
+(** For Lean: [true] if the name [name] that we print (relative to the namespace
+    of the crate, or to the root namespace and the open namespaces) doesn't
+    resolve to the declaration for which we print it in the scope [scope]. We
+    follow the resolution of the names of Lean ([resolveLocalName] and
+    [resolveGlobalName] in [Lean/ResolveName.lean]):
+    - the first component of the name is a field in scope: a local declaration
+      shadows a global declaration, also when we project it;
+    - the name is a suffix of the name of a declaration being defined, and ends
+      with the name of its local declaration (but it is not the name of this
+      declaration). A declaration being defined is not used as the prefix of a
+      longer name when there is a global declaration of this name, as is the
+      case of the names that we print;
+    - or a declaration [ns.name] of the crate comes before, for a namespace [ns]
+      in which Lean elaborates the declaration that we extract: Lean tries these
+      namespaces before the namespace of the crate, the root namespace and the
+      open namespaces. *)
+let lean_name_is_captured (scope : lean_scope) (name : string) : bool =
+  let root =
+    match String.index_opt name '.' with
+    | Some i -> String.sub name 0 i
+    | None -> name
+  in
+  StringSet.mem root scope.fields
+  || List.exists
+       (fun (local_name, decl_name) ->
+         name <> decl_name
+         && name_has_suffix local_name name
+         && name_has_suffix name decl_name)
+       scope.aux_decls
+  || List.exists
+       (fun ns -> StringSet.mem (ns ^ "." ^ name) !lean_declared)
+       scope.namespaces
+
+(** For Lean: the full name of the declaration which we print as [name], if we
+    know it: the declarations of the crate which come before or which are being
+    defined are in the namespace of the crate, and the declarations of the
+    library are in {!lean_library_full_names}. *)
+let lean_full_name (scope : lean_scope) (name : string) : string option =
+  if
+    StringSet.mem name !lean_declared
+    || List.exists (fun (_, decl_name) -> decl_name = name) scope.aux_decls
+  then Some (!lean_namespace ^ "." ^ name)
+  else StringMap.find_opt name (Lazy.force lean_library_full_names)
+
+(** Print the name [name] of a declaration, escaped if needed.
+
+    For Lean, if the scope of the declaration that we extract captures the name
+    (see {!lean_name_is_captured}), we print its full name from the root
+    namespace instead: [_root_.x] is the declaration [x], whatever is in scope.
+    If we don't know the full name, we report an error and print the name as it
+    is. *)
+let lean_print_name ?(qualified : bool = false) (span : Meta.span option)
+    (ctx : extraction_ctx) (name : string) : string =
+  match ctx.lean_scope with
+  | Some scope
+    when backend () = Lean
+         && !lean_check_names && (not qualified)
+         && lean_name_is_captured scope name -> (
+      match lean_full_name scope name with
+      | Some full_name -> "_root_." ^ escape_name ~qualified:true full_name
+      | None ->
+          [%save_error_opt_span] span
+            ("In the generated Lean code, the name " ^ name
+           ^ " does not refer to the declaration for which we print it (a \
+              field, a declaration being defined, or a declaration of the \
+              namespace in which Lean elaborates the definition has the same \
+              name), and we don't know the full name of this declaration");
+          escape_name ~qualified name)
+  | _ -> escape_name ~qualified name
+
 (** Retrieve a name from the names maps, escaped if needed: the result is meant
     to be printed. See {!escape_name} for the meaning of [qualified]. *)
 let ctx_get ?(qualified : bool = false) (span : Meta.span option) (id : id)
@@ -863,7 +1030,82 @@ let ctx_get ?(qualified : bool = false) (span : Meta.span option) (id : id)
          if StringSet.mem root ctx.scoped_vars then
            shadowing_vars := StringSet.add root !shadowing_vars
      | None -> ());
-  escape_name ~qualified name
+  if id_is_decl id then lean_print_name ~qualified span ctx name
+  else escape_name ~qualified name
+
+(** For Lean: the scope of a group of declarations, given their names (relative
+    to the namespace of the crate). [mutual] is [true] if we print them in a
+    [mutual] block.
+
+    Lean elaborates a declaration [A.B.f] in the namespace [A.B]
+    ([expandDeclNamespace?] in [Lean/Elab/Declaration.lean]). It elaborates a
+    [mutual] block in the longest common namespace of its declarations if they
+    all have a namespace and if this namespace is not empty, and in the
+    namespace of the crate otherwise ([expandMutualNamespace]). The local
+    declaration of a declaration being defined has the name of the declaration
+    without this namespace. *)
+let lean_scope_of_group (names : string list) ~(mutual : bool) : lean_scope =
+  let names_comps = List.map (String.split_on_char '.') names in
+  let namespace_of (comps : string list) : string list =
+    match List.rev comps with
+    | [] -> []
+    | _ :: rev_namespace -> List.rev rev_namespace
+  in
+  let rec common_prefix (l0 : string list) (l1 : string list) : string list =
+    match (l0, l1) with
+    | x0 :: l0, x1 :: l1 when x0 = x1 -> x0 :: common_prefix l0 l1
+    | _ -> []
+  in
+  let namespace =
+    match names_comps with
+    | [ comps ] when not mutual -> namespace_of comps
+    | comps :: names_comps
+      when mutual
+           && List.for_all
+                (fun comps -> namespace_of comps <> [])
+                (comps :: names_comps) ->
+        List.fold_left
+          (fun ns comps -> common_prefix ns (namespace_of comps))
+          (namespace_of comps) names_comps
+    | _ -> []
+  in
+  let rec drop (n : int) (l : string list) : string list =
+    if n <= 0 then l
+    else
+      match l with
+      | [] -> []
+      | _ :: l -> drop (n - 1) l
+  in
+  let aux_decls =
+    List.map2
+      (fun name comps ->
+        (String.concat "." (drop (List.length namespace) comps), name))
+      names names_comps
+  in
+  (* The namespace and its prefixes, the innermost first *)
+  let rec prefixes (rev_ns : string list) : string list =
+    match rev_ns with
+    | [] -> []
+    | _ :: rev_ns' -> String.concat "." (List.rev rev_ns) :: prefixes rev_ns'
+  in
+  {
+    namespaces = prefixes (List.rev namespace);
+    aux_decls;
+    fields = StringSet.empty;
+  }
+
+(** For Lean: register that the field [field_name] of the structure that we
+    extract is in scope in the fields which follow *)
+let ctx_lean_scope_add_field (field_name : string) (ctx : extraction_ctx) :
+    extraction_ctx =
+  match ctx.lean_scope with
+  | None -> ctx
+  | Some scope ->
+      {
+        ctx with
+        lean_scope =
+          Some { scope with fields = StringSet.add field_name scope.fields };
+      }
 
 let ctx_get_global (span : Meta.span) (id : A.GlobalDeclId.id)
     (ctx : extraction_ctx) : string =

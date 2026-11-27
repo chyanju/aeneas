@@ -24,10 +24,10 @@ Compiler source: Translate.ml, line 575
 
 [[91mError[39m] Could not extract the trait declaration: it was not translated because of a previous error
 Source: 'tests/src/trait-method-sig-failure.rs', lines 9:0-15:1
-Compiler source: Translate.ml, line 1078
+Compiler source: Translate.ml, line 1162
 [[91mError[39m] Could not extract the trait implementation: the declaration of the implemented trait was not translated because of a previous error
 Source: 'tests/src/trait-method-sig-failure.rs', lines 19:0-27:1
-Compiler source: Translate.ml, line 1099
+Compiler source: Translate.ml, line 1183
 [[91mError[39m] Could not find: trait_decl_id: 4
 Source: 'tests/src/trait-method-sig-failure.rs', lines 29:0-31:1
 Compiler source: extract/ExtractBase.ml, line 479

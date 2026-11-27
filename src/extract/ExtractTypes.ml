@@ -334,17 +334,21 @@ let extract_const_generic (span : Meta.span) (ctx : extraction_ctx)
       let s = ctx_get_const_generic_var span origin id ctx in
       F.pp_print_string fmt s
 
-let extract_literal_type (_ctx : extraction_ctx) (fmt : F.formatter)
-    (ty : literal_type) : unit =
+let extract_literal_type ?(span : Meta.span option = None)
+    (ctx : extraction_ctx) (fmt : F.formatter) (ty : literal_type) : unit =
+  (* For Lean, these names may be captured: see {!lean_print_name} *)
+  let print_name (name : string) : unit =
+    F.pp_print_string fmt (lean_print_name span ctx name)
+  in
   match ty with
-  | TBool -> F.pp_print_string fmt (bool_name ())
-  | TChar -> F.pp_print_string fmt (char_name ())
+  | TBool -> print_name (bool_name ())
+  | TChar -> print_name (char_name ())
   | TInt int_ty ->
       let prefix = if backend () = Lean then "Std." else "" in
-      F.pp_print_string fmt (prefix ^ int_name (Signed int_ty))
+      print_name (prefix ^ int_name (Signed int_ty))
   | TUInt int_ty ->
       let prefix = if backend () = Lean then "Std." else "" in
-      F.pp_print_string fmt (prefix ^ int_name (Unsigned int_ty))
+      print_name (prefix ^ int_name (Unsigned int_ty))
   | TFloat float_ty -> F.pp_print_string fmt (float_name float_ty)
   | TPureNat -> F.pp_print_string fmt "ℕ"
   | TPureInt -> F.pp_print_string fmt "ℤ"
@@ -389,7 +393,9 @@ let rec extract_ty (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
           [%ldebug "Tuple case"];
           (* This is a bit annoying, but in F*/Coq/HOL4 [()] is not the unit type:
              we have to write [unit]... *)
-          if generics.types = [] then F.pp_print_string fmt (unit_name ())
+          if generics.types = [] then
+            F.pp_print_string fmt
+              (lean_print_name (Some span) ctx (unit_name ()))
           else (
             F.pp_print_string fmt "(";
             Collections.List.iter_link
@@ -504,7 +510,7 @@ let rec extract_ty (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
   | TVar var ->
       let origin, id = origin_from_de_bruijn_var var in
       F.pp_print_string fmt (ctx_get_type_var span origin id ctx)
-  | TLiteral lty -> extract_literal_type ctx fmt lty
+  | TLiteral lty -> extract_literal_type ~span:(Some span) ctx fmt lty
   | TArrow (arg_ty, ret_ty) ->
       if inside then F.pp_print_string fmt "(";
       extract_rec ~inside:false arg_ty;
@@ -543,7 +549,9 @@ let rec extract_ty (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
             extract_trait_ref span ctx fmt no_params_tys ~inside:false trait_ref;
             F.pp_print_string fmt ("." ^ add_brackets type_name))
   | TNever ->
-      F.pp_print_string fmt (if backend () = FStar then "never" else "Never")
+      F.pp_print_string fmt
+        (if backend () = FStar then "never"
+         else lean_print_name (Some span) ctx "Never")
   | TError -> extract_ty_errors fmt
   | TDynTrait params -> (
       [%ltrace "dyn trait:\n" ^ dyn_predicate_to_string ctx params];
@@ -1076,7 +1084,7 @@ let extract_type_decl_tuple_struct_body (span : Meta.span)
   (* If the type is empty, we need to have a special treatment *)
   if fields = [] then (
     F.pp_print_space fmt ();
-    F.pp_print_string fmt (unit_name ()))
+    F.pp_print_string fmt (lean_print_name (Some span) ctx (unit_name ())))
   else (
     (* Open additional boxes *)
     F.pp_print_break fmt 1 2;
@@ -1186,7 +1194,8 @@ let extract_type_decl_struct_body (ctx : extraction_ctx) (fmt : F.formatter)
       | Coq | FStar | HOL4 -> F.pp_open_hvbox fmt 0
       | Lean -> F.pp_open_vbox fmt 0);
       (* Print the fields *)
-      let print_field (field_id : FieldId.id) (f : field) : unit =
+      let print_field (ctx : extraction_ctx) (field_id : FieldId.id) (f : field)
+          : extraction_ctx =
         let field_name =
           ctx_get_field def.item_meta.span (TAdtId def.def_id) field_id ctx
         in
@@ -1200,12 +1209,21 @@ let extract_type_decl_struct_body (ctx : extraction_ctx) (fmt : F.formatter)
           f.field_ty;
         if backend () <> Lean then F.pp_print_string fmt ";";
         (* Close the box for the field *)
-        F.pp_close_box fmt ()
+        F.pp_close_box fmt ();
+        (* In Lean, the field is in scope in the types of the fields which
+           follow *)
+        match ctx_find_raw (FieldId (TAdtId def.def_id, field_id)) ctx with
+        | Some name -> ctx_lean_scope_add_field name ctx
+        | None -> ctx
       in
       let fields = FieldId.mapi (fun fid f -> (fid, f)) fields in
-      Collections.List.iter_link (F.pp_print_space fmt)
-        (fun (fid, f) -> print_field fid f)
-        fields;
+      let _ =
+        List.fold_left
+          (fun (ctx, first) (fid, f) ->
+            if not first then F.pp_print_space fmt ();
+            (print_field ctx fid f, false))
+          (ctx, true) fields
+      in
       (* Close the box for the body *)
       F.pp_close_box fmt ();
       match backend () with
@@ -1532,8 +1550,11 @@ let extract_type_decl_gen (ctx : extraction_ctx) (fmt : F.formatter)
   let is_opaque = type_kind = None in
   let is_opaque_coq = backend () = Coq && is_opaque in
   let use_forall = is_opaque_coq && def.generics <> empty_generic_params in
-  (* Retrieve the definition name *)
-  let def_name = ctx_get_local_type span def.def_id ctx in
+  (* Retrieve the definition name (the scope of the declaration starts after
+     it) *)
+  let def_name =
+    ctx_get_local_type span def.def_id { ctx with lean_scope = None }
+  in
   (* Add the type and const generic params - note that we need those bindings only for the
    * body translation (they are not top-level) *)
   let ctx_body, type_params, cg_params, trait_clauses =
