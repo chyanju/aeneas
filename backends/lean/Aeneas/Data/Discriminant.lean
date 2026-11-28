@@ -127,10 +127,14 @@ meta def generateReadDiscriminantCmds (declName : Name) (ty : ScalarTy) (discrVa
   let defStx ← `(@[expose] public def $(mkIdent auxFunName):ident
     $binders:bracketedBinder* : $ty := $body:term)
 
-  -- Generate the syntax for the instance
+  -- Generate the syntax for the instance. The instance is named after the type: the name that
+  -- Lean generates for an anonymous instance only has the last component of the type name (and
+  -- the attribute elaborates the command in the root namespace), so two types with the same last
+  -- component, for instance in the translations of two crates, would get the same name.
   let binders := binders.extract 0 indVal.numParams
   let args := header.argNames.map mkIdent
-  let instStx ← `(@[expose] public instance $binders:bracketedBinder* :
+  let instName := Name.mkStr (`_root_ ++ declName) "instDiscriminant"
+  let instStx ← `(@[expose] public instance $(mkIdent instName):ident $binders:bracketedBinder* :
       Aeneas.Std.Discriminant ($header.targetType) ($ty) where
       read_discriminant := @$(mkIdent auxFunName):ident $args*)
 
@@ -217,6 +221,26 @@ namespace Test
   #guard read_discriminant Foo2.Variant1 = 0#i16
   #guard read_discriminant Foo3.Variant1 = 3#isize
   #guard read_discriminant Foo3.Variant2 = 4#isize
+
+  -- The instances are named after their types, whatever the current namespace
+  example : Discriminant (Foo Nat Nat) U8 := Foo.instDiscriminant
+  example : Discriminant Foo2 I16 := Foo2.instDiscriminant
+
+  namespace Other
+
+  -- A type with the same last component as `Test.Foo2`
+  inductive Foo2 where
+  | Variant1
+  | Variant2
+  | Variant3
+
+  #eval generateReadDiscriminant ``Aeneas.Discriminant.Test.Other.Foo2 .U32 none
+
+  #guard read_discriminant Foo2.Variant3 = 2#u32
+  example : Discriminant Foo2 U32 := Foo2.instDiscriminant
+  example : Discriminant Test.Foo2 I16 := Test.Foo2.instDiscriminant
+
+  end Other
 
 end Test
 
