@@ -224,11 +224,13 @@ let lean_builtin_funs =
       "alloc.boxed.Box.deref_mut"
       ~keep_params:(Some [ true; false ])
       ~can_fail:false;
-    (* file: "Aeneas/Std/Alloc/Slice.lean", line: 26 *)
+    (* file: "Aeneas/Std/Alloc/Slice.lean", line: 29 *)
     mk_fun "alloc::slice::{[@T]}::into_vec" "alloc.slice.Slice.into_vec"
       ~keep_params:(Some [ true; false ])
       ~can_fail:false ~lift:false;
-    (* file: "Aeneas/Std/Alloc/Slice.lean", line: 11 *)
+    (* file: "Aeneas/Std/Alloc/Slice.lean", line: 100 *)
+    mk_fun "alloc::slice::{[@T]}::sort_by_key" "alloc.slice.Slice.sort_by_key";
+    (* file: "Aeneas/Std/Alloc/Slice.lean", line: 14 *)
     mk_fun "alloc::slice::{[@T]}::to_vec" "alloc.slice.Slice.to_vec";
     (* file: "Aeneas/Std/Alloc/Vec.lean", line: 404 *)
     mk_fun "alloc::vec::from_elem" "alloc.vec.from_elem";
