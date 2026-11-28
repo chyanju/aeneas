@@ -178,9 +178,13 @@ theorem Vec.push_spec {α : Type u} (v : Vec α) (x : α) (h : v.val.length < Us
   v1.val = v.val ++ [x] ⦄ := by
   unfold push; grind
 
+/-- Model of `Vec::insert` (<https://doc.rust-lang.org/std/vec/struct.Vec.html#method.insert>):
+    `x` inserted at position `i`, the elements after it shifted to the right; at `i = len` this
+    appends `x`. Rust panics if `i > len`. The size condition is the one of `Vec.push`: Rust
+    grows the buffer in the same way for every `i`. -/
 @[expose, rust_fun "alloc::vec::{alloc::vec::Vec<@T>}::insert" (keepParams := [true, false])]
 def Vec.insert {α : Type u} (v: Vec α) (i: Usize) (x: α) : Result (Vec α) :=
-  if i.val < v.length then
+  if i.val ≤ v.length then
     if h : v.length < Usize.max then
       ok (.from (v.val.insertIdx i x)
         (List.length_insertIdx_le_succ.trans (Nat.succ_le_of_lt h)))
@@ -191,10 +195,23 @@ def Vec.insert {α : Type u} (v: Vec α) (i: Usize) (x: α) : Result (Vec α) :=
 
 @[step]
 theorem Vec.insert_spec {α : Type u} (v: Vec α) (i: Usize) (x: α)
-  (hbound : i.val < v.length)
+  (hbound : i.val ≤ v.length)
   (hsize : v.length < Usize.max) :
   v.insert i x ⦃ nv => nv.val = v.val.insertIdx i x ⦄ := by
   simp [insert, *]
+
+/-- `Vec::insert` at the length of the vector appends. -/
+theorem Vec.insert_length_spec {α : Type u} (v: Vec α) (i: Usize) (x: α)
+  (hi : i.val = v.length)
+  (hsize : v.length < Usize.max) :
+  v.insert i x ⦃ nv => nv.val = v.val ++ [x] ⦄ := by
+  simp [insert, hi, hsize, List.insertIdx_length_self]
+
+/-- `Vec::insert` fails for a position beyond the length of the vector. -/
+theorem Vec.insert_eq_fail {α : Type u} (v: Vec α) (i: Usize) (x: α)
+  (hbound : v.length < i.val) :
+  v.insert i x = fail arrayOutOfBounds := by
+  simp [insert, Nat.not_le.mpr hbound]
 
 @[expose] def Vec.index_usize {α : Type u} (v: Vec α) (i: Usize) : Result α :=
   match v[i.val]? with

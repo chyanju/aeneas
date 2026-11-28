@@ -18,16 +18,44 @@ set_option maxHeartbeats 1000000
 /- You can set the `maxRecDepth` value with the `-max-recdepth` CLI option -/
 set_option maxRecDepth 2048
 
+/- You can remove the following line by using the CLI option `-all-computable`: -/
+noncomputable section
+
 namespace vec_methods
 
+/-- [core::fmt::{impl core::fmt::Debug for char}::fmt]:
+    Source: '/rustc/library/core/src/fmt/mod.rs', lines 2972:4-2972:50
+    Name pattern: [core::fmt::{core::fmt::Debug<char>}::fmt]
+    Visibility: public -/
+@[rust_fun "core::fmt::{core::fmt::Debug<char>}::fmt"]
+axiom Char.Insts.CoreFmtDebug.fmt
+  :
+  Char → core.fmt.Formatter → Result ((core.result.Result Unit
+    core.fmt.Error) × core.fmt.Formatter)
+
+/-- Trait implementation: [core::fmt::{impl core::fmt::Debug for char}]
+    Source: '/rustc/library/core/src/fmt/mod.rs', lines 2971:0-2971:19
+    Name pattern: [core::fmt::Debug<char>] -/
+@[reducible, rust_trait_impl "core::fmt::Debug<char>"]
+def Char.Insts.CoreFmtDebug : core.fmt.Debug Char := {
+  fmt := Char.Insts.CoreFmtDebug.fmt
+}
+
+/-- [core::mem::maybe_uninit::MaybeUninit]
+    Source: '/rustc/library/core/src/mem/maybe_uninit.rs', lines 355:0-355:24
+    Name pattern: [core::mem::maybe_uninit::MaybeUninit]
+    Visibility: public -/
+@[rust_type "core::mem::maybe_uninit::MaybeUninit"]
+axiom core.mem.maybe_uninit.MaybeUninit (T : Type _) : Type
+
 /-- [vec_methods::new_is_empty]:
-    Source: 'tests/src/vec-methods.rs', lines 10:0-13:1
+    Source: 'tests/src/vec-methods.rs', lines 12:0-15:1
     Visibility: public -/
 def new_is_empty : Result Bool := do
   alloc.vec.Vec.is_empty (alloc.vec.Vec.new Std.I32)
 
 /-- [vec_methods::test_new_is_empty]:
-    Source: 'tests/src/vec-methods.rs', lines 16:0-18:1
+    Source: 'tests/src/vec-methods.rs', lines 18:0-20:1
     Visibility: public -/
 def test_new_is_empty : Result Unit := do
   let b ← new_is_empty
@@ -37,14 +65,14 @@ def test_new_is_empty : Result Unit := do
 #guard (test_new_is_empty).reducesTo ()
 
 /-- [vec_methods::pushed_is_empty]:
-    Source: 'tests/src/vec-methods.rs', lines 20:0-24:1
+    Source: 'tests/src/vec-methods.rs', lines 22:0-26:1
     Visibility: public -/
 def pushed_is_empty : Result Bool := do
   let v ← alloc.vec.Vec.push (alloc.vec.Vec.new Std.I32) 1#i32
   alloc.vec.Vec.is_empty v
 
 /-- [vec_methods::test_pushed_is_empty]:
-    Source: 'tests/src/vec-methods.rs', lines 27:0-29:1
+    Source: 'tests/src/vec-methods.rs', lines 29:0-31:1
     Visibility: public -/
 def test_pushed_is_empty : Result Unit := do
   let b ← pushed_is_empty
@@ -54,7 +82,7 @@ def test_pushed_is_empty : Result Unit := do
 #guard (test_pushed_is_empty).reducesTo ()
 
 /-- [vec_methods::first_or]:
-    Source: 'tests/src/vec-methods.rs', lines 32:0-38:1
+    Source: 'tests/src/vec-methods.rs', lines 34:0-40:1
     Visibility: public -/
 def first_or
   (v : alloc.vec.Vec Std.U32) (default : Std.U32) : Result Std.U32 := do
@@ -66,7 +94,7 @@ def first_or
       0#usize
 
 /-- [vec_methods::test_first_or]:
-    Source: 'tests/src/vec-methods.rs', lines 41:0-46:1
+    Source: 'tests/src/vec-methods.rs', lines 43:0-48:1
     Visibility: public -/
 def test_first_or : Result Unit := do
   let left_val ← first_or (alloc.vec.Vec.new Std.U32) 7#u32
@@ -77,5 +105,134 @@ def test_first_or : Result Unit := do
 
 /- Unit test for [vec_methods::test_first_or] -/
 #guard (test_first_or).reducesTo ()
+
+/-- [vec_methods::insert_doc]:
+    Source: 'tests/src/vec-methods.rs', lines 52:0-55:1
+    Visibility: public -/
+def insert_doc (vec : alloc.vec.Vec Char) : Result (alloc.vec.Vec Char) := do
+  let vec1 ← alloc.vec.Vec.insert vec 1#usize 'd'
+  alloc.vec.Vec.insert vec1 4#usize 'e'
+
+/-- [vec_methods::test_insert_doc]:
+    Source: 'tests/src/vec-methods.rs', lines 58:0-67:1
+    Visibility: public -/
+def test_insert_doc : Result Unit := do
+  let y ←
+    lift (Std.Array.to_slice (Array.make 3#usize [ 'a', 'b', 'c' ] : Array Char
+      3#usize))
+  let ret := alloc.slice.Slice.into_vec y
+  let ret1 ← insert_doc ret
+  let left_val := alloc.vec.Vec.len ret1
+  massert (left_val = 5#usize)
+  let left_val1 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Char) ret1
+      0#usize
+  massert (left_val1 = 'a')
+  let left_val2 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Char) ret1
+      1#usize
+  massert (left_val2 = 'd')
+  let left_val3 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Char) ret1
+      2#usize
+  massert (left_val3 = 'b')
+  let left_val4 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Char) ret1
+      3#usize
+  massert (left_val4 = 'c')
+  let left_val5 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Char) ret1
+      4#usize
+  massert (left_val5 = 'e')
+
+/- Unit test for [vec_methods::test_insert_doc] -/
+#guard (test_insert_doc).reducesTo ()
+
+/-- [vec_methods::insert_at]:
+    Source: 'tests/src/vec-methods.rs', lines 70:0-72:1
+    Visibility: public -/
+def insert_at
+  (v : alloc.vec.Vec Std.U32) (index : Std.Usize) (x : Std.U32) :
+  Result (alloc.vec.Vec Std.U32)
+  := do
+  alloc.vec.Vec.insert v index x
+
+/-- [vec_methods::test_insert_at]:
+    Source: 'tests/src/vec-methods.rs', lines 75:0-96:1
+    Visibility: public -/
+def test_insert_at : Result Unit := do
+  let v ← insert_at (alloc.vec.Vec.new Std.U32) 0#usize 5#u32
+  let left_val := alloc.vec.Vec.len v
+  massert (left_val = 1#usize)
+  let left_val1 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v
+      0#usize
+  massert (left_val1 = 5#u32)
+  let v1 ← insert_at v 0#usize 3#u32
+  let left_val2 := alloc.vec.Vec.len v1
+  massert (left_val2 = 2#usize)
+  let left_val3 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v1
+      0#usize
+  massert (left_val3 = 3#u32)
+  let left_val4 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v1
+      1#usize
+  massert (left_val4 = 5#u32)
+  let v2 ← insert_at v1 1#usize 4#u32
+  let left_val5 := alloc.vec.Vec.len v2
+  massert (left_val5 = 3#usize)
+  let left_val6 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v2
+      0#usize
+  massert (left_val6 = 3#u32)
+  let left_val7 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v2
+      1#usize
+  massert (left_val7 = 4#u32)
+  let left_val8 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v2
+      2#usize
+  massert (left_val8 = 5#u32)
+  let v3 ← insert_at v2 3#usize 6#u32
+  let left_val9 := alloc.vec.Vec.len v3
+  massert (left_val9 = 4#usize)
+  let left_val10 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v3
+      3#usize
+  massert (left_val10 = 6#u32)
+
+/- Unit test for [vec_methods::test_insert_at] -/
+#guard (test_insert_at).reducesTo ()
+
+/-- [vec_methods::insert_at_len]:
+    Source: 'tests/src/vec-methods.rs', lines 99:0-102:1
+    Visibility: public -/
+def insert_at_len
+  (v : alloc.vec.Vec Std.U32) (x : Std.U32) :
+  Result (alloc.vec.Vec Std.U32)
+  := do
+  let n := alloc.vec.Vec.len v
+  alloc.vec.Vec.insert v n x
+
+/-- [vec_methods::test_insert_at_len]:
+    Source: 'tests/src/vec-methods.rs', lines 105:0-112:1
+    Visibility: public -/
+def test_insert_at_len : Result Unit := do
+  let v ← insert_at_len (alloc.vec.Vec.new Std.U32) 1#u32
+  let v1 ← insert_at_len v 2#u32
+  let left_val := alloc.vec.Vec.len v1
+  massert (left_val = 2#usize)
+  let left_val1 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v1
+      0#usize
+  massert (left_val1 = 1#u32)
+  let left_val2 ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U32) v1
+      1#usize
+  massert (left_val2 = 2#u32)
+
+/- Unit test for [vec_methods::test_insert_at_len] -/
+#guard (test_insert_at_len).reducesTo ()
 
 end vec_methods
